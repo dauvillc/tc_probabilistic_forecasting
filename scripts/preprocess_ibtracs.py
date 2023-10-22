@@ -7,6 +7,7 @@ tropical storms trajectory and intensity prediction.
 import pandas as pd
 import datetime as dt
 import argparse
+import yaml
 
 
 # List of variables to keep from the dataset
@@ -14,11 +15,14 @@ _SELECTED_VARS_ = ['SID', 'NAME', 'ISO_TIME', 'LAT', 'LON', 'BASIN', 'TRACK_TYPE
 
 
 if __name__ == "__main__":
+    # Load the configuration file.
+    with open('config.yml', 'r') as f:
+        config = yaml.safe_load(f)
     # Arguments parsing
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--ibtracs_path', type=str, default='data/IBTrACS/ibtracs.since1980.list.v04r00.csv',
+    argparser.add_argument('--ibtracs_path', type=str, default=config['paths']['ibtracs_original'],
                            help='Path to the IBTrACS dataset.')
-    argparser.add_argument('--output_path', type=str, default='data/IBTrACS/ibtracs_preprocessed.csv',
+    argparser.add_argument('--output_path', type=str, default=config['paths']['ibtracs_preprocessed'],
                            help='Path to the preprocessed IBTrACS dataset.')
     argparser.add_argument('--start_date', type=str, default='2000-01-01',
                            help='First date to consider for the dataset.')
@@ -46,7 +50,7 @@ if __name__ == "__main__":
     # Resample the dataset to have a frequency of 6 hours.
     ibtracs_df = ibtracs_df.set_index('ISO_TIME').groupby('SID').resample('6H').asfreq().drop(columns=['SID']).reset_index()
 
-    # FInd the storms for which at least one time step lacks the lat or lon information.
+    # Find the storms for which at least one time step lacks the lat or lon information.
     missing_lat_lon = ibtracs_df[ibtracs_df[['LAT', 'LON']].isna().any(axis=1)]['SID'].unique()
     # Remove the storms that have at least one time step lacking the lat or lon information.
     ibtracs_df = ibtracs_df[~ibtracs_df['SID'].isin(missing_lat_lon)]

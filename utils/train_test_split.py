@@ -14,7 +14,8 @@ def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0
     Parameters
     ----------
     ibtracs_data : pandas.DataFrame
-        Preprocessed IBTrACS dataset. The dataset must be ordered by SID, and then valid time.
+        Preprocessed [subset of the] IBTrACS dataset.
+        The dataset must be ordered by SID, and then valid time.
         The SIDs must be ordered by time of the first record of the storm (as in the original dataset).
     train_size : float, optional.
         Size of the train set. The default is 0.6.

@@ -4,9 +4,10 @@ Implements functions to manipulate IBTrACS data.
 """
 
 import pandas as pd
+import yaml
 
 
-def load_ibtracs_data(path="data/IBTrACS/ibtracs_preprocessed.csv"):
+def load_ibtracs_data(path=None):
     """
     Loads the preprocessed IBTrACS data from the given path.
     
@@ -14,10 +15,16 @@ def load_ibtracs_data(path="data/IBTrACS/ibtracs_preprocessed.csv"):
     ----------
     path : str, optional
         The path to the preprocessed IBTrACS data file.
+        Defaults to the path specified in config.yaml.
 
     Returns
     -------
     ibtracs_dataset : pandas.DataFrame.
     """
+    # Read the path from config.yaml if not specified
+    if path is None:
+        with open("config.yml") as file:
+            config = yaml.safe_load(file)
+        path = config['paths']["ibtracs_preprocessed"]
     ibtracs_dataset = pd.read_csv(path, parse_dates=["ISO_TIME"])
     return ibtracs_dataset
