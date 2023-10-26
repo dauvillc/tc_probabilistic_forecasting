@@ -1,5 +1,4 @@
 """
-Clément Dauvilliers - 2023 10 17
 Implements a simple CNN to predict the intensity of a storm one step in advance.
 """
 import sys
@@ -11,7 +10,7 @@ import yaml
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from baselines.models import CNN3D
-from tasks.intensity import intensity_dataset
+from tasks.intensity import intensity_dataset, plot_intensity_bias, plot_intensity_distribution
 from data_processing import load_era5_patches, era5_patches_to_tensors
 from data_processing.formats import SuccessiveStepsDataset
 from utils.train_test_split import train_val_test_split
@@ -23,12 +22,16 @@ if __name__ == "__main__":
     output_variables = ['INTENSITY']
     # Argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--past_steps", type=int, default=1,
-                        help="Number of time steps given as input to the model.")
+    parser.add_argument("-p", "--past_steps", type=int, default=3,
+                        help="Number of time steps given as input to the model. Must be >= 3.")
     parser.add_argument("-n", "--prediction_steps", type=int, default=1,
                         help="Number of time steps to predict.")
+    parser.add_argument("--channels", type=int, default=8,
+                        help="Number of channels in the first convolutional layer.")
     args = parser.parse_args()
     past_steps, future_steps = args.past_steps, args.prediction_steps
+    if past_steps < 3:
+        raise ValueError("The number of past steps must be >= 3.")
     # Load the configuration file
     with open("config.yml", "r") as f:
         config = yaml.safe_load(f)
@@ -40,12 +43,9 @@ if __name__ == "__main__":
     all_trajs = intensity_dataset()
 
     # Load the ERA5 patches associated to the dataset
-    atmo_patches, surface_patches = load_era5_patches(all_trajs)
+    atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
     # Convert the patches to torch tensors
-    atmo_patches = era5_patches_to_tensors(atmo_patches)
-    surface_patches = era5_patches_to_tensors(surface_patches)
-    # Stack the atmospheric and surface patches along the channel dimension
-    patches = torch.cat((atmo_patches, surface_patches), dim=1)
+    patches = era5_patches_to_tensors(surface_patches)
 
     # Split the dataset into train, validation and test sets
     train_index, val_index, test_index = train_val_test_split(all_trajs,
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     # ====== MODEL TRAINING ====== #
     # Initialize the model
-    model = CNN3D(output_size=future_steps).to(device)
+    model = CNN3D(3, future_steps, args.channels).to(device)
     # Initialize the optimizer and the step LR scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
@@ -139,3 +139,20 @@ if __name__ == "__main__":
     plt.legend()
     # Save the figure under figures/baselines/
     plt.savefig('figures/baselines/intensity_cnn_losses.png')
+
+    # Plot the bias on the training set
+    y_true, y_pred = [], []
+    for past_vars, past_data, y in train_loader:
+        x = past_data
+        x, y = x.to(device), y.to(device)
+        y_pred.append(model(x).detach().cpu())
+        y_true.append(y.detach().cpu())
+    y_true = torch.cat(y_true, dim=0)
+    y_pred = torch.cat(y_pred, dim=0)
+    train_bias = plot_intensity_bias(y_true, y_pred, savepath="figures/baselines/intensity_cnn_bias.png")
+    plot_intensity_distribution(y_true, y_pred, savepath="figures/baselines/intensity_cnn_distribution.png")
+
+    # Print the train bias for each predicted time step, in a readable format
+    print("Train bias:")
+    for i, b in enumerate(train_bias):
+        print(f"t+{i + 1}: {b:.2f} m/s")

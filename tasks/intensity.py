@@ -82,5 +82,35 @@ def plot_intensity_bias(y_true, y_pred, savepath=None):
         plt.savefig(savepath)
 
     # Return the average bias
-    return np.mean(np.abs(bias))
+    return np.mean(np.abs(bias), axis=0)
 
+def plot_intensity_distribution(y_true, y_pred, savepath=None):
+    """
+    Plots the distribution of the intensity prediction for each predicted time
+    step, versus the true distribution.
+
+    Parameters
+    ----------
+    y_true : torch Tensor or ndarray of shape (N, n_predicted_steps)
+        True intensity values, in m/s.
+    y_pred : torch Tensor or ndarray of shape (N, n_predicted_steps)
+        Predicted intensity values.
+    savepath : str, optional
+        Path to save the figure to. If None, the figure is not saved.
+    """
+    # Plot the distributions of the true and predicted intensities
+    # in a separate subplot for each predicted time step:
+    n_predicted_steps = y_true.shape[1]
+    fig, axes = plt.subplots(nrows=n_predicted_steps, ncols=1, figsize=(10, 5 * n_predicted_steps), squeeze=False)
+    for i in range(n_predicted_steps):
+        # Plot the distribution of the true and predicted intensities for the i-th predicted time step
+        axes[i, 0].hist(y_true[:, i], bins=100, alpha=0.5, label='True')
+        axes[i, 0].hist(y_pred[:, i], bins=100, alpha=0.5, label='Predicted')
+        axes[i, 0].set_xlabel("Intensity (m/s)")
+        axes[i, 0].set_ylabel("Frequency")
+        axes[i, 0].set_title(f"Intensity distribution at t+{i + 1}")
+        axes[i, 0].legend()
+    # Save the figure if a path is provided
+    if savepath is not None:
+        plt.tight_layout()
+        plt.savefig(savepath)
