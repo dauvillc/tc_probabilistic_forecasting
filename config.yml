@@ -3,6 +3,7 @@ paths:
   ibtracs_preprocessed: data/IBTrACS/ibtracs_preprocessed.csv
   era5: /scratch/cdauvill/era5/pangu/
   era5_patches: /scratch/cdauvill/era5/storm_patches/5/
+  hursat_b1: /scratch/cdauvill/hursat-b1/
 
 era5:
   # Variables to include in the reanalysis data
