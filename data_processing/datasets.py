@@ -33,6 +33,19 @@ def load_ibtracs_data(path=None):
     return ibtracs_dataset
 
 
+def load_hursat_b1():
+    """
+    Loads the HURSAT-B1 dataset, from the path specified in config.yml.
+    
+    Returns
+    -------
+    hursat_b1_dataset : xarray.Dataset
+        Dataset of dimensions (sid_time, lat, lon) containing the HURSAT-B1
+    """
+    # TODO
+    pass
+
+
 def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
     """
     Loads the ERA5 patches for a given set of storms, from the directory specified
