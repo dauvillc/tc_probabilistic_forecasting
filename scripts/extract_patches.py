@@ -152,7 +152,7 @@ def extract_patches(vartype, args):
                 # and 69 variables). The following replaces those missing values with the mean of the variable
                 # over the patch.
                 for var in patch.data_vars:
-                    if patch[var].isnull().any().data == False:
+                    if patch[var].isnull().sum().item() > 0:
                         patch[var] = patch[var].fillna(patch[var].mean())
                 
                 # Save the patches to be latter written into that month's ncdf file

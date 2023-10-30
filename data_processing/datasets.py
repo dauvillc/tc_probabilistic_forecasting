@@ -173,8 +173,7 @@ def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
     if load_surface:
         print("Loading surface patches...")
         surface_patches = xr.open_mfdataset(os.path.join(path, "*_surface_patches.nc"),
-                                            combine="nested", concat_dim="sid_time",
-                                            mask_and_scale=False)
+                                            combine="nested", concat_dim="sid_time")
         surface_patches = select_sid_time(surface_patches, storms_dataset['SID'], storms_dataset['ISO_TIME'])
 
     return atmo_patches, surface_patches
