@@ -5,7 +5,7 @@ Implements the intensity prediction task and metrics.
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
-from data_processing import load_ibtracs_data
+from data_processing.datasets import load_ibtracs_data
 
 
 def intensity_dataset():
