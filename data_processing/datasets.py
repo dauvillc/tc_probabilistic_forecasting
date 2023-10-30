@@ -42,7 +42,7 @@ def load_hursat_b1(storms_dataset, verbose=True):
     ----------
     storms_dataset : pandas DataFrame
         Dataset of storms that includes the columns (SID, ISO_TIME). The function
-        will search for the HURSAT-B1 data for each storm in this dataset.
+        will search for the HURSAT-B1 data for each pair (SID, ISO_TIME) in this dataset.
     verbose : bool, optional
         Whether to print the number of storms found in the HURSAT-B1 data, and
         provide a progress bar.
@@ -53,7 +53,7 @@ def load_hursat_b1(storms_dataset, verbose=True):
         Dataset of storms that includes the columns (SID, ISO_TIME). Indicates
         which storms and timestamps were found in the HURSAT-B1 data.
     hursat_b1_dataset : xarray.DataArray
-        DataArray of dimensions (sid_time, lat, lon) containing the HURSAT-B1
+        DataArray of dimensions (time, lat, lon) containing the HURSAT-B1
         data for the storms found in the storms_dataset.
     """
     if verbose:
@@ -75,20 +75,35 @@ def load_hursat_b1(storms_dataset, verbose=True):
         year = storms_dataset[storms_dataset['SID'] == sid]['ISO_TIME'].dt.year.min()
         # Check if the file exists
         if os.path.exists(os.path.join(path, str(year), sid + ".nc")):
-            # Load the file
-            hursat_b1_dataset.append(xr.open_dataarray(os.path.join(path, str(year), sid + ".nc")))
-            # Check which timestamps are in the file
-            timestamps = hursat_b1_dataset[-1]['time'].values
-            # Add the timestamps to the found_storms dataset
-            found_storms.append(pd.DataFrame({"SID": [sid] * len(timestamps),
-                                              "ISO_TIME": timestamps}))
+            # Load the file. We need to load it as a dataset of one variable
+            # instead of a DataArray, because "time" is both a dimension and a coordinates,
+            # and a DataArray cannot rename one of them without renaming the other.... (please fix).
+            dataset = xr.open_dataset(os.path.join(path, str(year), sid + ".nc"))
+            # Rename the "time" dimension to "sid_time"
+            dataset = dataset.rename_dims({'time': 'sid_time'})
+            # Add a coordinate "sid" with the current sid to the "sid_time" dimension
+            sids = [sid] * len(dataset['sid_time'])
+            dataset = dataset.assign_coords(sid=('sid_time', sids))
+            # Create a MultiIndex to index the sid_time dimension by pairs (sid, time)
+            dataset = dataset.set_index(sid_time=['sid', 'time'])
+            # Retrieve the rows of storms_dataset that correspond to the current sid
+            # and timestamps by joining on the sid and ISO_TIME columns.
+            sid_times = dataset.sid_time.to_pandas().rename('sid_time')
+            sid_rows = storms_dataset.merge(sid_times,
+                                            left_on=['SID', 'ISO_TIME'],
+                                            right_index=True)[['SID', 'ISO_TIME']]
+            # Select within the hursat_b1_dataset the timestamps that were found
+            dataset = select_sid_time(dataset, sid_rows['SID'], sid_rows['ISO_TIME'])
+            # Select the only variable in the dataset to obtain a DataArray
+            dataset = dataset['IRWIN']
+            # Transform the dimension "time" into "sid_time", whih is a multiindex
+            # e.g. dataset.sel(sid_time=(sid, time))
+            hursat_b1_dataset.append(dataset)
+            found_storms.append(sid_rows)
     # Concatenate the found_storms dataset
     found_storms = pd.concat(found_storms, ignore_index=True)
     # Concatenate the hursat_b1_dataset
-    hursat_b1_dataset = xr.concat(hursat_b1_dataset, dim='time')
-    # Rename the time dimension to sid_time, as it actually now contains the successive
-    # timestamps for each storm (same dimension as the ibtracs data dimension 0).
-    hursat_b1_dataset = hursat_b1_dataset.rename({'time': 'sid_time'})
+    hursat_b1_dataset = xr.concat(hursat_b1_dataset, dim='sid_time')
     # Print the number of storms found
     if verbose:
         print(f"Found {len(found_storms)}/{len(storms_dataset)} storms in the HURSAT-B1 data.")
