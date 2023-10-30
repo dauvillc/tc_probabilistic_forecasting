@@ -91,6 +91,9 @@ def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
         # to 0.25°, to match the resolution of ERA5.
         # At the same time, crop central patches. 
         snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'), new_res=0.25, crop_size=crop_size)
+        # Some snapshots (very few, of the order of 0.001%) have missing values.
+        # We'll replace them with the mean of the snapshot. 
+        snapshot = snapshot.fillna(snapshot.mean())
         snapshots.append(snapshot)
          
     # At this point, we cannot concatenate the snapshots because they have different
