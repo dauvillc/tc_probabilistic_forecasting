@@ -73,3 +73,45 @@ def set_relative_spatial_coords(datacube, lat_dim="latitude", lon_dim="longitude
     datacube = datacube.assign_coords(v_pixel_offset=('v_pixel_offset', vertical_coords),
                                       h_pixel_offset=('h_pixel_offset', horizontal_coords))
     return datacube
+
+
+def upscale_and_crop(datacube, dims, new_res, crop_size=None):
+    """
+    Spatially upscales a datacube by a given factor, then crops its center.
+
+    Parameters
+    ----------
+    datacube : xarray.Dataset
+        Datacube to be upscaled.
+    dims : tuple of str
+        Pair of dimensions to be upscaled (e.g. lat, lon).
+        Both dimensions must have the same size.
+    new_res : float
+        New resolution of the datacube.
+    crop_size : int
+        Size of the crop, in pixels. Default is None, which means no crop.
+
+    Returns
+    -------
+    datacube : xarray.Dataset
+        Upscaled datacube.
+    """
+    if datacube[dims[0]].shape != datacube[dims[1]].shape:
+        raise ValueError("The dimensions to be upscaled must have the same size.")
+    # Retrieve the min and max values of the dimensions to be upscaled
+    min_lat, max_lat = datacube[dims[0]].min(), datacube[dims[0]].max()
+    min_lon, max_lon = datacube[dims[1]].min(), datacube[dims[1]].max()
+    # Create the new coordinates for latitude and longitude, with points spaced by the new resolution
+    new_lat = np.arange(min_lat, max_lat + new_res, new_res)
+    new_lon = np.arange(min_lon, max_lon + new_res, new_res)
+    # Crop the center of the coordinates if needed
+    if crop_size is not None:
+        center_idx = len(new_lat) // 2
+        new_lat = new_lat[center_idx - crop_size // 2: center_idx + crop_size // 2 + crop_size % 2]
+        new_lon = new_lon[center_idx - crop_size // 2: center_idx + crop_size // 2 + crop_size % 2]
+
+    # Upscale the datacube
+    datacube = datacube.interp({dims[0]: new_lat, dims[1]: new_lon}, method='linear')
+    return datacube
+
+

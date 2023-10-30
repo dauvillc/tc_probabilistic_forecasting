@@ -16,11 +16,27 @@ import os
 import yaml
 import xarray as xr
 import argparse
+import pandas as pd
 from tqdm import tqdm
-from utils.datacube import set_relative_spatial_coords
+from utils.datacube import set_relative_spatial_coords, upscale_and_crop
 
 
-def load_hourly_snapshots(year, sid):
+def extract_time_from_filename(filename):
+    """
+    Extracts the time from a HURSAT B1 file name.
+    The files are named as follows:
+    SID.NAME.YYYY.MM.DD.HHmm.ANGLE.SAT.WIND.hursat-b1.version.nc
+    where ANGLE is the satellite's zenith angle, SAT is the satellite's abreviation,
+    and WIND is the approximate wind speed in knots.
+    See https://www.ncei.noaa.gov/products/hurricane-satellite-data
+    for more information.
+    """
+    timestamp = f"{filename.split('.')[2]}-{filename.split('.')[3]}-{filename.split('.')[4]}T{filename.split('.')[5]}"
+    timestamp = pd.to_datetime(timestamp)
+    return timestamp
+
+
+def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
     """
     Loads the hourly snapshots of a specific storm, and assembles
     them into a single xarray DataArray.
@@ -33,6 +49,10 @@ def load_hourly_snapshots(year, sid):
         The year of the storm.
     sid : str
         The storm ID.
+    res_hours : int, optional
+        The time resolution of the snapshots, in hours. Default is 6.
+    crop_size : int, optional
+        The size of the central crop, in pixels. Default is None, which means no crop.
     
     Returns
     -------
@@ -41,17 +61,14 @@ def load_hourly_snapshots(year, sid):
     """
     # Path to the storm's directory
     storm_dir = os.path.join(hursat_b1_path, str(year), sid)
-    # List all files in the storm's directory. Their names are of the form
-    # SID.NAME.YYYY.MM.DD.HHmm.ANGLE.SAT.WIND.hursat-b1.version.nc
-    # where ANGLE is the satellite's zenith angle, SAT is the satellite's abreviation,
-    # and WIND is the approximate wind speed in knots.
-    # See https://www.ncei.noaa.gov/products/hurricane-satellite-data
-    # for more information.
+    # List all files in the storm's directory.
     files = os.listdir(storm_dir)
-    # Retrieve all iso timestamps from the files and convert them to datetime objects
-    timestamps = ['.'.join(f.split(".")[2:6]) for f in files]
+    # Retrieve all iso timestamps from the files and conert them to datetime objects
+    timestamps = [extract_time_from_filename(f) for f in files]
     # Remove duplicates and sort the timestamps
     timestamps = sorted(list(set(timestamps)))
+    # Keep only the timestamps that are multiples of the time resolution
+    timestamps = [t for t in timestamps if t.hour % res_hours == 0]
     # For each timestamp, find the file with the lowest satellite zenith angle.
     # Load the corresponding file and add it to the list of snapshots.
     snapshots = []
@@ -60,14 +77,22 @@ def load_hourly_snapshots(year, sid):
         min_angle = 91
         min_file = None
         for f in files:
-            if '.'.join(f.split(".")[2:6]) == timestamp:
+            # Extract the timestamp from the file name 
+            file_timestamp = extract_time_from_filename(f)
+            # If the timestamp matches the current timestamp, check the angle
+            if file_timestamp == timestamp:
                 angle = float(f.split(".")[6])
                 if angle < min_angle:
                     min_angle = angle
                     min_file = f
         # Load the file
-        snapshots.append(xr.open_dataset(os.path.join(storm_dir, min_file))['IRWIN'])
-    
+        snapshot = xr.open_dataset(os.path.join(storm_dir, min_file))['IRWIN']
+        # Upscale the snapshots to a resolution from their native resolution of 0.07°
+        # to 0.25°, to match the resolution of ERA5.
+        # At the same time, crop central patches. 
+        snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'), new_res=0.25, crop_size=crop_size)
+        snapshots.append(snapshot)
+         
     # At this point, we cannot concatenate the snapshots because they have different
     # values of latitude and longitude. We need to set the relative spatial coordinates
     # that will be the same for each snapshot.
@@ -78,6 +103,11 @@ def load_hourly_snapshots(year, sid):
     snapshots = xr.concat(snapshots, dim='htime')
     # Rename the htime dimension to time
     snapshots = snapshots.rename({'htime': 'time'})
+
+    # Finally: the timestamps do not correspond to exact hours as in the IBTrACS data
+    # (e.g. 23:59:599999 instead of 00:00:00). We need to round them to the nearest hour.
+    snapshots['time'] = snapshots['time'].dt.round('H')
+
     return snapshots
 
 
@@ -88,8 +118,10 @@ if __name__ == "__main__":
                         help="The first year to consider.")
     parser.add_argument("--end_year", "-e", type=int, default=2021,
                         help="The last year to consider.")
+    parser.add_argument("--crop_size", "-c", type=int, default=None,
+                        help="The size of the central crop, in pixels.")
     args = parser.parse_args()
-    start_year, end_year = args.start_year, args.end_year
+    start_year, end_year = args.start_year + 2000, args.end_year + 2000
 
     # Paths extraction
     with open("config.yml") as file:
@@ -110,6 +142,7 @@ if __name__ == "__main__":
         # List of all storms in the current year in the HURSAT data
         storms = os.listdir(year_dir)
         for sid in tqdm(storms):
-            snapshots = load_hourly_snapshots(year, sid)
+            # This will also crop central patches, if crop_size was specified
+            snapshots = load_hourly_snapshots(year, sid, crop_size=args.crop_size)
             # Save the snapshots in a netCDF file
             snapshots.to_netcdf(os.path.join(output_dir, f"{sid}.nc"))

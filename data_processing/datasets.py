@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import xarray as xr
 import yaml
+from tqdm import tqdm
 from utils.datacube import select_sid_time
 
 
@@ -33,18 +34,66 @@ def load_ibtracs_data(path=None):
     return ibtracs_dataset
 
 
-def load_hursat_b1():
+def load_hursat_b1(storms_dataset, verbose=True):
     """
     Loads the HURSAT-B1 dataset, from the path specified in config.yml.
+
+    Parameters
+    ----------
+    storms_dataset : pandas DataFrame
+        Dataset of storms that includes the columns (SID, ISO_TIME). The function
+        will search for the HURSAT-B1 data for each storm in this dataset.
+    verbose : bool, optional
+        Whether to print the number of storms found in the HURSAT-B1 data, and
+        provide a progress bar.
     
     Returns
     -------
-    hursat_b1_dataset : xarray.Dataset
-        Dataset of dimensions (sid_time, lat, lon) containing the HURSAT-B1
+    found_storms: pandas DataFrame
+        Dataset of storms that includes the columns (SID, ISO_TIME). Indicates
+        which storms and timestamps were found in the HURSAT-B1 data.
+    hursat_b1_dataset : xarray.DataArray
+        DataArray of dimensions (sid_time, lat, lon) containing the HURSAT-B1
+        data for the storms found in the storms_dataset.
     """
-    # TODO
-    pass
-
+    if verbose:
+        print("Loading HURSAT-B1 data...")
+    # Read the path from config.yaml
+    with open("config.yml") as file:
+        config = yaml.safe_load(file)
+    path = config['paths']["hursat_b1_preprocessed"]
+    # Isolate the unique SIDs
+    sids = storms_dataset['SID'].unique()
+    # For each unique sid, check if there is a file in the HURSAT-B1 data
+    # for it.
+    found_storms = []
+    hursat_b1_dataset = []
+    iterator = tqdm(sids) if verbose else sids
+    for sid in iterator:
+        # The data is stored as path/year/sid.nc            
+        # where year is the year the storm started in.
+        year = storms_dataset[storms_dataset['SID'] == sid]['ISO_TIME'].dt.year.min()
+        # Check if the file exists
+        if os.path.exists(os.path.join(path, str(year), sid + ".nc")):
+            # Load the file
+            hursat_b1_dataset.append(xr.open_dataarray(os.path.join(path, str(year), sid + ".nc")))
+            # Check which timestamps are in the file
+            timestamps = hursat_b1_dataset[-1]['time'].values
+            # Add the timestamps to the found_storms dataset
+            found_storms.append(pd.DataFrame({"SID": [sid] * len(timestamps),
+                                              "ISO_TIME": timestamps}))
+    # Concatenate the found_storms dataset
+    found_storms = pd.concat(found_storms, ignore_index=True)
+    # Concatenate the hursat_b1_dataset
+    hursat_b1_dataset = xr.concat(hursat_b1_dataset, dim='time')
+    # Rename the time dimension to sid_time, as it actually now contains the successive
+    # timestamps for each storm (same dimension as the ibtracs data dimension 0).
+    hursat_b1_dataset = hursat_b1_dataset.rename({'time': 'sid_time'})
+    # Print the number of storms found
+    if verbose:
+        print(f"Found {len(found_storms)}/{len(storms_dataset)} storms in the HURSAT-B1 data.")
+        print(f"Dataset memory footprint: {hursat_b1_dataset.nbytes / 1e9} GB.")
+    return found_storms, hursat_b1_dataset
 
 def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
     """
