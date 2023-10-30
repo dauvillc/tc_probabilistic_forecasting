@@ -15,7 +15,7 @@ import argparse
 import time
 import yaml
 from tqdm import tqdm
-from data_processing import load_ibtracs_data
+from data_processing.datasets import load_ibtracs_data
 
 
 def find_nearest(array, val):
@@ -147,6 +147,13 @@ def extract_patches(vartype, args):
                 relative_coords = np.arange(-patch_size, patch_size + 1)
                 patch = patch.assign_coords(v_pixel_offset=('v_pixel_offset', relative_coords),
                                                       h_pixel_offset=('h_pixel_offset', relative_coords))
+
+                # Some variables contain (extremely) rare missing values (of the order of 1 every 20 years of data
+                # and 69 variables). The following replaces those missing values with the mean of the variable
+                # over the patch.
+                for var in patch.data_vars:
+                    if patch[var].isnull().any().data == False:
+                        patch[var] = patch[var].fillna(patch[var].mean())
                 
                 # Save the patches to be latter written into that month's ncdf file
                 storm_patches.append(patch)
