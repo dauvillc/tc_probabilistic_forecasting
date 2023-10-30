@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from baselines.models import CNN3D
 from tasks.intensity import intensity_dataset, plot_intensity_bias, plot_intensity_distribution
-from data_processing import load_era5_patches, era5_patches_to_tensors
-from data_processing.formats import SuccessiveStepsDataset
+from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensors
+from data_processing.datasets import load_hursat_b1, load_era5_patches
 from utils.train_test_split import train_val_test_split
 
 
@@ -41,11 +41,15 @@ if __name__ == "__main__":
     # ====== DATA LOADING ====== #
     # Load the trajectory forecasting dataset
     all_trajs = intensity_dataset()
-
     # Load the ERA5 patches associated to the dataset
     atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
+    # Load the HURSAT-B1 data
+    hursat_data = load_hursat_b1(all_trajs, use_cache=True, verbose=True)
     # Convert the patches to torch tensors
-    patches = era5_patches_to_tensors(surface_patches)
+    patches = datacube_to_tensor(surface_patches)
+
+
+    # ====== TRAIN/VAL/TEST SPLIT ====== #
 
     # Split the dataset into train, validation and test sets
     train_index, val_index, test_index = train_val_test_split(all_trajs,

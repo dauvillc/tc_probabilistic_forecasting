@@ -3,42 +3,43 @@ Clément Dauvilliers - 2023 10 18
 Implements functions to convert datacubes between different formats.
 """
 import pandas as pd
+import xarray as xr
 import torch
 
 
-def era5_patches_to_tensors(datacube):
+def datacube_to_tensor(datacube, dim_h='h_pixel_offset', dim_v='v_pixel_offset'):
     """
-    Converts a datacube of ERA5 patches stored as an xarray Dataset
+    Converts a datacube stored as an xarray Dataset or DataArray
     to a torch tensor.
 
     Parameters
     ----------
-    datacube : xarray Dataset of dimensions (sid_time, v_pixel_offset,
-        h_pixel_offset [, levels]) with V variables.
+    datacube : xarray Dataset or DataArray of dimensions (sid_time, dim_h, dim_v [, ...]).
+    dim_h : str, optional
+        Name of the horizontal (i.e. latitude-like) dimension. 
+    dim_v : str, optional
+        Name of the vertical (i.e. longitude-like) dimension.
 
     Returns
     -------
-    torch tensor of dimensions (sid_time, V or V * levels],
-        v_pixel_offset, h_pixel_offset)
+    torch tensor of dimensions (sid_time, C, H, W) where C is the number of channels.
     """
-    # Convert to a DataArray by stacking all variables in one dimension
-    datacube = datacube.to_array(dim="variable")
-    # Check if "level" is in the dimensions. If so, stack the level and
-    # the variable dimensions to obtain a DataArray of dimensions
-    # (sid_time, level * variable, v_pixel_offset, h_pixel_offset)
-    if "level" in datacube.dims:
-        datacube = datacube.stack(channels=("level", "variable"))
-    else:
-        # Rename the "variable" dimension to "channels" to be compatible
-        datacube = datacube.rename(variable="channels")
+    # If the datacube is a Dataset, convert it to a DataArray by stacking all variables
+    # in one dimension
+    if isinstance(datacube, xr.Dataset):
+        datacube = datacube.to_array(dim="variable")
+    # Stack all dimensions except sid_time, dim_h and dim_v to obtain a DataArray of
+    # dimensions (sid_time, channels, dim_h, dim_v)
+    other_dims = [dim for dim in datacube.dims if dim not in ['sid_time', dim_h, dim_v]]
+    datacube = datacube.stack(channels=other_dims)
     # Reorder the dimensions to (N, C, H, W) with N = sid_time,
-    # C = variable * level, H = v_pixel_offset, W = h_pixel_offset
-    # to be compatible with the input of a torch CNN
-    datacube = datacube.transpose("sid_time", "channels", ...)
+    # C = channels, H = dim_h, W = dim_v to be compatible with the input of a torch CNN
+    datacube = datacube.transpose("sid_time", "channels", dim_h, dim_v)
     # Convert to a torch tensor
     datacube = torch.tensor(datacube.values, dtype=torch.float32)
-
     return datacube
+
+
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
