@@ -3,15 +3,28 @@ Test the hursat data preparation pipeline.
 """
 import sys
 sys.path.append("./")
+import os
 import matplotlib.pyplot as plt
+import yaml
 from data_processing.datasets import load_ibtracs_data, load_hursat_b1
 
 
 if __name__ == "__main__":
     # Load the IBTrACS data
     ibtracs_dataset = load_ibtracs_data()
-    # Load the HURSAT-B1 data
-    found_storms, hursat_b1_dataset = load_hursat_b1(ibtracs_dataset, verbose=True)
+    # Remove the cached HURSAT-B1 data if it exists
+    with open("config.yml") as file:
+        config = yaml.safe_load(file)
+    path_cache = config['paths']["hursat_b1_cache"]
+    if os.path.exists(path_cache):
+        os.remove(path_cache)
+    # Load the HURSAT-B1 data without the cache
+    found_storms, hursat_b1_dataset = load_hursat_b1(ibtracs_dataset, use_cache=True, verbose=True)
+    # Load the HURSAT-B1 data with the cache
+    found_cache, hursat_b1_cache = load_hursat_b1(ibtracs_dataset, use_cache=True, verbose=True)
+    # Check that the two datasets are equal
+    assert found_storms.equals(found_cache)
+    assert hursat_b1_dataset.equals(hursat_b1_cache)
 
     # Select eight random pairs (SID, ISO_TIME) from found_storms,
     # and plot the HURSAT-B1 data for each of them
