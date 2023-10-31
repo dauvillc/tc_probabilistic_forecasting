@@ -56,8 +56,9 @@ def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
     
     Returns
     -------
-    xarray.DataArray of dimensions (time, lat, lon)
-        The hourly snapshots of the storm.
+    xarray.DataArray of dimensions (time, lat, lon) or None
+        The hourly snapshots of the storm. If for some timestep, no data was found
+        from any satellite, returns None.
     """
     # Path to the storm's directory
     storm_dir = os.path.join(hursat_b1_path, str(year), sid)
@@ -71,29 +72,32 @@ def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
     timestamps = [t for t in timestamps if t.hour % res_hours == 0]
     # For each timestamp, find the file with the lowest satellite zenith angle.
     # Load the corresponding file and add it to the list of snapshots.
+    # For some rare timestamps, the satellite data is fully missing. In this case,
+    # we try to use another satellite that does not have optimal viewing conditions.
     snapshots = []
     for timestamp in timestamps:
-        # Find the file with the lowest satellite zenith angle
-        min_angle = 91
-        min_file = None
-        for f in files:
-            # Extract the timestamp from the file name 
-            file_timestamp = extract_time_from_filename(f)
-            # If the timestamp matches the current timestamp, check the angle
-            if file_timestamp == timestamp:
-                angle = float(f.split(".")[6])
-                if angle < min_angle:
-                    min_angle = angle
-                    min_file = f
-        # Load the file
-        snapshot = xr.open_dataset(os.path.join(storm_dir, min_file))['IRWIN']
-        # Upscale the snapshots to a resolution from their native resolution of 0.07°
-        # to 0.25°, to match the resolution of ERA5.
-        # At the same time, crop central patches. 
-        snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'), new_res=0.25, crop_size=crop_size)
-        # Some snapshots (very few, of the order of 0.001%) have missing values.
-        # We'll replace them with the mean of the snapshot. 
-        snapshot = snapshot.fillna(snapshot.mean())
+        # Browse all satellite files for the current timestamp
+        # and order them by increasing satellite zenith angle
+        files_for_timestamp = [f for f in files if extract_time_from_filename(f) == timestamp]
+        files_for_timestamp = sorted(files_for_timestamp, key=lambda f: float(f.split('.')[6]))
+        # Try the successive files until finding one that does not have NaN values
+        snapshot = None
+        for file in files_for_timestamp:
+            # Load the file
+            snapshot = xr.open_dataset(os.path.join(storm_dir, file))['IRWIN']
+            # Upscale the snapshot to a resolution from its native resolution of 0.07°
+            # to 0.25°, to match the resolution of ERA5.
+            # At the same time, crop a central patch.
+            snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'), new_res=0.25, crop_size=crop_size)
+            # If the snapshot does not contain any NaN values, keep it
+            # Once again, the vast majority of snapshots are valid, so this loop
+            # will only be executed a few times.
+            if not snapshot.isnull().any():
+                break
+            snapshot = None
+        if snapshot is None:
+            # Return None if no valid snapshot was found, discard the storm
+            return None
         snapshots.append(snapshot)
          
     # At this point, we cannot concatenate the snapshots because they have different
@@ -148,4 +152,5 @@ if __name__ == "__main__":
             # This will also crop central patches, if crop_size was specified
             snapshots = load_hourly_snapshots(year, sid, crop_size=args.crop_size)
             # Save the snapshots in a netCDF file
-            snapshots.to_netcdf(os.path.join(output_dir, f"{sid}.nc"))
+            if snapshots is not None:
+                snapshots.to_netcdf(os.path.join(output_dir, f"{sid}.nc"))

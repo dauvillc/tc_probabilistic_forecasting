@@ -31,7 +31,11 @@ def datacube_to_tensor(datacube, dim_h='h_pixel_offset', dim_v='v_pixel_offset')
     # Stack all dimensions except sid_time, dim_h and dim_v to obtain a DataArray of
     # dimensions (sid_time, channels, dim_h, dim_v)
     other_dims = [dim for dim in datacube.dims if dim not in ['sid_time', dim_h, dim_v]]
-    datacube = datacube.stack(channels=other_dims)
+    if other_dims:
+        datacube = datacube.stack(channels=other_dims)
+    else:
+        # If the datacube is only 3D, add a dummy dimension to make it 4D
+        datacube = datacube.expand_dims('channels', axis=1)
     # Reorder the dimensions to (N, C, H, W) with N = sid_time,
     # C = channels, H = dim_h, W = dim_v to be compatible with the input of a torch CNN
     datacube = datacube.transpose("sid_time", "channels", dim_h, dim_v)
