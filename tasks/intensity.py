@@ -5,6 +5,8 @@ Implements the intensity prediction task and metrics.
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
+import seaborn as sns
+import pandas as pd
 from data_processing.datasets import load_ibtracs_data
 
 
@@ -40,76 +42,113 @@ def plot_intensity_bias(y_true, y_pred, savepath=None):
     """
     Plots the distribution of the bias of the intensity prediction for each
     predicted time step.
+    Multiple models can be included.
     
     Parameters
     ----------
-    y_true : torch Tensor or ndarray of shape (N, n_predicted_steps)
+    y_true : torch Tensor or ndarray of shape (N, n_predicted_steps),
+        where N is the number of samples.
         True intensity values, in m/s.
-    y_pred : torch Tensor or ndarray of shape (N, n_predicted_steps)
-        Predicted intensity values.
+    y_pred : mapping of str to torch Tensor or ndarray of shape (N, n_predicted_steps),
+        where N is the number of samples.
     savepath : str, optional
         Path to save the figure to. If None, the figure is not saved.
 
     Returns
     -------
-    average_bias: float
-        Average absolute bias of the intensity prediction, in m/s.
+    average_bias: a mapping of str to ndarray of shape (n_predicted_steps,), such
+        that average_bias[model_name][i] is the average absolute bias of the i-th predicted
+        time step for the model named model_name.
     """
     if isinstance(y_true, torch.Tensor):
         y_true = y_true.numpy(force=True)
-    if isinstance(y_pred, torch.Tensor):
-        y_pred = y_pred.numpy(force=True)
-
+    model_names = list(y_pred.keys())
+    # Convert the predictions to ndarrays if required
+    for model_name in model_names:
+        if isinstance(y_pred[model_name], torch.Tensor):
+            y_pred[model_name] = y_pred[model_name].numpy(force=True)
     n_predicted_steps = y_true.shape[1]
-    # Compute the bias
-    bias = y_pred - y_true
-    # Compute the maximum absolute value of the bias, for plotting purposes
-    xlim = np.max(np.abs(bias))
 
-    if savepath is not None:
-        # Plot the bias distribution in a separate subplot for each predicted time step:
-        fig, axes = plt.subplots(nrows=n_predicted_steps, ncols=1, figsize=(10, 5 * n_predicted_steps), squeeze=False)
+    # Compute the bias for each model
+    bias = {}
+    for model_name in model_names:
+        bias[model_name] = y_pred[model_name] - y_true
+
+    # Create a DataFrame in long format with (model, time step, bias) as columns
+    df = pd.DataFrame(columns=['model', 'time step', 'bias'])
+    for model_name in model_names:
         for i in range(n_predicted_steps):
-            # Plot the distribution of the bias for the i-th predicted time step
-            axes[i, 0].hist(bias[:, i], bins=100)
-            axes[i, 0].set_xlim(-xlim, xlim)
-            axes[i, 0].set_xlabel("Bias (m/s)")
-            axes[i, 0].set_ylabel("Frequency")
-            axes[i, 0].set_title(f"Bias distribution at t+{i + 1}")
+            df = pd.concat([df,
+                            pd.DataFrame({'model': [model_name] * len(bias[model_name][:, i]),
+                                          'time step': [i + 1] * len(bias[model_name][:, i]),
+                                          'bias': bias[model_name][:, i]})],
+                           ignore_index=True)
 
-        # Save the figure
+    # Plot the distribution of the bias for each model and for each predicted time step
+    # using a violin plot
+    with sns.axes_style('whitegrid'):
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.violinplot(x='time step', y='bias', hue='model', data=df, ax=ax)
+        ax.set_xlabel("Predicted time step (hours)")
+        ax.set_ylabel("Bias (m/s)")
+        ax.set_title("Distribution of the bias of the intensity prediction for each predicted time step")
+
+    # Save the figure if a path is provided
+    if savepath is not None:
         plt.tight_layout()
         plt.savefig(savepath)
+    # Compute the average bias for each model and for each predicted time step
+    average_bias = {}
+    for model_name in model_names:
+        average_bias[model_name] = np.mean(np.abs(bias[model_name]), axis=0)
+    return average_bias
 
-    # Return the average bias
-    return np.mean(np.abs(bias), axis=0)
 
 def plot_intensity_distribution(y_true, y_pred, savepath=None):
     """
-    Plots the distribution of the intensity prediction for each predicted time
-    step, versus the true distribution.
-
+    Plots the distribution of the intensity prediction for each predicted time step.
+    Multiple models can be included.
+    
     Parameters
     ----------
-    y_true : torch Tensor or ndarray of shape (N, n_predicted_steps)
+    y_true : torch Tensor or ndarray of shape (N, n_predicted_steps),
+        where N is the number of samples.
         True intensity values, in m/s.
-    y_pred : torch Tensor or ndarray of shape (N, n_predicted_steps)
-        Predicted intensity values.
+    y_pred : mapping of str to torch Tensor or ndarray of shape (N, n_predicted_steps),
+        where N is the number of samples.
     savepath : str, optional
         Path to save the figure to. If None, the figure is not saved.
     """
-    # Plot the distributions of the true and predicted intensities
-    # in a separate subplot for each predicted time step:
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.numpy(force=True)
+    model_names = list(y_pred.keys())
+    # Convert the predictions to ndarrays if required
+    for model_name in model_names:
+        if isinstance(y_pred[model_name], torch.Tensor):
+            y_pred[model_name] = y_pred[model_name].numpy(force=True)
     n_predicted_steps = y_true.shape[1]
-    fig, axes = plt.subplots(nrows=n_predicted_steps, ncols=1, figsize=(10, 5 * n_predicted_steps), squeeze=False)
-    for i in range(n_predicted_steps):
-        # Plot the distribution of the true and predicted intensities for the i-th predicted time step
-        axes[i, 0].hist(y_true[:, i], bins=100, alpha=0.5, label='True')
-        axes[i, 0].hist(y_pred[:, i], bins=100, alpha=0.5, label='Predicted')
-        axes[i, 0].set_xlabel("Intensity (m/s)")
-        axes[i, 0].set_ylabel("Frequency")
-        axes[i, 0].set_title(f"Intensity distribution at t+{i + 1}")
-        axes[i, 0].legend()
+    # Consider the groundtruth as a model
+    model_names.append('groundtruth')
+    y_pred['groundtruth'] = y_true
+    
+    # Create a DataFrame in long format with (model, time step, intensity) as columns
+    df = pd.DataFrame(columns=['model', 'time step', 'intensity'])
+    for model_name in model_names:
+        for i in range(n_predicted_steps):
+            df = pd.concat([df,
+                            pd.DataFrame({'model': [model_name] * len(y_pred[model_name][:, i]),
+                                          'time step': [i + 1] * len(y_pred[model_name][:, i]),
+                                          'intensity': y_pred[model_name][:, i]})],
+                           ignore_index=True)
+    # Plot the distribution of the intensity for each model and for each predicted time step
+    # using a violin plot
+    with sns.axes_style('whitegrid'):
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.violinplot(x='time step', y='intensity', hue='model', data=df, ax=ax)
+        ax.set_xlabel("Predicted time step (hours)")
+        ax.set_ylabel("Intensity (m/s)")
+        ax.set_title("Distribution of the intensity prediction for each predicted time step")
+
     # Save the figure if a path is provided
     if savepath is not None:
         plt.tight_layout()
