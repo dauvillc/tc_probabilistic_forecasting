@@ -79,10 +79,13 @@ if __name__ == "__main__":
         val_patches = patches[val_index]
 
         # Create the train and validation datasets
+        yield_input_variables = len(input_variables) > 0
         train_dataset = SuccessiveStepsDataset(train_trajs, train_patches, past_steps, future_steps,
-                                               input_variables, output_variables)
+                                               input_variables, output_variables,
+                                               yield_input_variables=yield_input_variables)
         val_dataset = SuccessiveStepsDataset(val_trajs, val_patches, past_steps, future_steps,
-                                             input_variables, output_variables)
+                                             input_variables, output_variables,
+                                             yield_input_variables=yield_input_variables)
         # Create the train and validation data loaders
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -90,9 +93,19 @@ if __name__ == "__main__":
 
     # ====== MODELS TRAINING ====== #
     # Initialize the models
-    model_era5 = CNN3D(3, future_steps, args.channels).to(device)
-    model_hursat = CNN3D(1, future_steps, args.channels).to(device)
-    model_full = CNN3D(4, future_steps, args.channels).to(device)
+    patch_size = era5_patches.shape[-2:]
+    input_size = (past_steps,) + patch_size
+    # The number of scalar variables the model receives is the number of variables
+    # (e.g. 2 for lat/lon) times the number of past steps
+    num_input_variables = len(input_variables) * past_steps
+    model_era5 = CNN3D(input_size,
+                       input_channels=3, input_variables=num_input_variables, output_size=future_steps,
+                       hidden_channels=args.channels).to(device)
+    model_hursat = CNN3D(input_size,
+                         input_channels=1, input_variables=num_input_variables, output_size=future_steps,
+                         hidden_channels=args.channels).to(device)
+    model_full = CNN3D(input_size, input_channels=4, input_variables=num_input_variables, output_size=future_steps,
+                       hidden_channels=args.channels).to(device)
     models = {'era5': model_era5, 'hursat': model_hursat, 'era5+hursat': model_full}
 
     # Instantiate the train and validation data loaders
@@ -132,8 +145,8 @@ if __name__ == "__main__":
         for name, model in models.items():
             y_pred[name] = []
             for past_vars, past_images, future_images in loaders[name][1]:
-                x, y = past_images.to(device), future_images.to(device)
-                y_pred[name].append(model(x).cpu())
+                x1, x2, y = past_images.to(device), past_vars.to(device), future_images.to(device)
+                y_pred[name].append(model(x1, x2).cpu())
                 if not y_true_filled:
                     y_true.append(y.cpu())
             if not y_true_filled:

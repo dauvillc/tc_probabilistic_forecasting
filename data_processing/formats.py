@@ -75,10 +75,13 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         List of variables to include in the target. If None, all variables are included.
     target_to_tensor: bool, optional
         If True, converts the target to a torch tensor. The default is True.
+    yield_input_variables: bool, optional
+        If True (default), yields the past variables alongside the past datacube. If False,
+        returns None, input_datacube, target_variables.
     """
     def __init__(self, trajectories, datacube, past_steps, future_steps,
                  input_variables=None, target_variables=None,
-                 target_to_tensor=True):
+                 target_to_tensor=True, yield_input_variables=True):
         # Reset the index of the trajectories to make sure it matches that of
         # the datacube, and assert they have the same length.
         trajectories = trajectories.reset_index(drop=True)
@@ -88,6 +91,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.past_steps = past_steps
         self.future_steps = future_steps
         self.target_to_tensor = target_to_tensor
+        self.yield_input_variables = yield_input_variables
 
         # Assert there are no missing values in the trajectories
         assert not trajectories.isna().any().any(), "There are missing values in the trajectories."
@@ -154,5 +158,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         past_data = self.datacube[past_indices]
         # Transpose the datacube to (C, Time, H, W) to be compatible with the input of a torch CNN
         past_data = past_data.transpose(0, 1)
-
-        return past_traj, past_data, future_traj
+        
+        if self.yield_input_variables:
+            return past_traj, past_data, future_traj
+        else:
+            return None, past_data, future_traj
