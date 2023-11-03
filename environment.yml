@@ -1,0 +1,25 @@
+name: torch
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pytorch-cuda
+  - pytorch
+  - pip
+  - xarray
+  - ca-certificates
+  - openssl
+  - netcdf4
+  - matplotlib
+  - certifi
+  - seaborn
+  - plotly
+  - ipywidgets
+  - scikit-learn
+  - nodejs
+  - torchvision
+  - chardet
+  - pyyaml
+  - dask
+  - beautifulsoup4
+  - lightning
