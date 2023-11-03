@@ -75,19 +75,21 @@ def set_relative_spatial_coords(datacube, lat_dim="latitude", lon_dim="longitude
     return datacube
 
 
-def upscale_and_crop(datacube, dims, new_res=None, crop_size=None):
+def rescale_and_crop(datacube, dims, new_res=None, crop_size=None):
     """
-    Spatially upscales a datacube by a given factor, then crops its center.
+    Spatially rescales a datacube (either up or down) and crops its center.
+    The interpolation is linear.
 
     Parameters
     ----------
     datacube : xarray.Dataset
         Datacube to be upscaled.
     dims : tuple of str
-        Pair of dimensions to be upscaled (e.g. lat, lon).
+        Names of the latitude and longitude dimensions, which shoudl be in the same
+        unit as new_res.
         Both dimensions must have the same size.
     new_res : float, optional
-        New resolution of the datacube. Default is None, which means no upscaling.
+        New resolution of the datacube. Default is None, which means no rescaling.
     crop_size : int
         Size of the crop, in pixels. Default is None, which means no crop.
 
@@ -111,11 +113,11 @@ def upscale_and_crop(datacube, dims, new_res=None, crop_size=None):
             new_lat = new_lat[center_idx - crop_size // 2: center_idx + crop_size // 2 + crop_size % 2]
             new_lon = new_lon[center_idx - crop_size // 2: center_idx + crop_size // 2 + crop_size % 2]
 
-        # Upscale the datacube
+        # Rescale the datacube
         datacube = datacube.interp({dims[0]: new_lat, dims[1]: new_lon}, method='linear')
         return datacube
     else:
-        # If no upscaling is needed, just crop the center of the datacube
+        # If no rescaling is needed, just crop the center of the datacube
         if crop_size is not None:
             center_idx = len(datacube[dims[0]]) // 2
             new_idx = slice(center_idx - crop_size // 2, center_idx + crop_size // 2 + crop_size % 2)

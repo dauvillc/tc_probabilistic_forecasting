@@ -43,6 +43,7 @@ def extract_patches(vartype, args):
     """
     patch_size = args.patch_size
     spatial_res = args.res
+    rescale_res = args.rescale
     suffix = args.suffix
     year = args.year + 2000
     # Read the configuration file
@@ -55,7 +56,7 @@ def extract_patches(vartype, args):
         atmo_vars = config['era5']['atmo_variables']
         surface_vars = config['era5']['surface_variables']
         # Atmospheric pressure levels to extract
-        pressure_levels = config['era5']['pressure_levels']
+        pressure_levels = sorted(config['era5']['pressure_levels'])
     # If there are no variables to extract, exit
     if len(atmo_vars) == 0 and vartype == 'atmo':
         print("No atmospheric variables to extract.")
@@ -127,17 +128,33 @@ def extract_patches(vartype, args):
                     dataset = curr_dataset
                 else:
                     dataset = next_dataset
+                # Select the current time step
+                datacube = dataset.sel(time=row.ISO_TIME)
 
                 # Find the lat/lon point that is closest to the storm's center
                 center_lon = find_nearest(dataset.coords['longitude'].data, row.LON)
                 center_lat = find_nearest(dataset.coords['latitude'].data, row.LAT)
-                # Define the area to extract
-                area_lon = np.arange(center_lon - patch_size * spatial_res, center_lon + (patch_size + 1) * spatial_res, spatial_res)
-                area_lat = np.arange(center_lat + patch_size * spatial_res, center_lat - (patch_size + 1) * spatial_res, -spatial_res)
-                # If the center is close to the Greenwich meroidian, the area's longitude may be negative or beyond 360
-                area_lon = area_lon % 360
-                # Extract a square patch in each direction around the mean location of the storm
-                patch = dataset.sel(time=row.ISO_TIME, longitude=area_lon, latitude=area_lat)
+                # The treatment differs here depending on whether rescaling is required or not
+                offsets_lon = np.arange(-patch_size, patch_size + 1)
+                offsets_lat = np.arange(patch_size, -patch_size - 1, -1)
+                if rescale_res is None:
+                    # Define the area to extract
+                    area_lon = center_lon + offsets_lon * spatial_res
+                    area_lat = center_lat + offsets_lat * spatial_res
+                    # If the center is close to the Greenwich meroidian, the area's longitude may be negative or beyond 360
+                    area_lon = area_lon % 360
+                    # Extract a square patch in each direction around the mean location of the storm
+                    patch = datacube.sel(longitude=area_lon, latitude=area_lat)
+                else:
+                    # If rescaling is required, we need to interpolate the new grid points.
+                    # However, we don't want to rescale the whole image and then crop, which would be very inefficient.
+                    # Instead, we'll compute exactly the new grid points and interpolate only those.
+                    new_lons = center_lon + offsets_lon * rescale_res
+                    new_lats = center_lat + offsets_lat * rescale_res
+                    new_lons = new_lons % 360
+                    # Interpolate the new grid points
+                    patch = datacube.interp({'longitude': new_lons, 'latitude': new_lats}, method='linear')
+                    
 
                 # Since the patches cover different ranges of latitudes / longitudes, they cannot be coherently stacked.
                 # The following Replaces the "longitude" and "latitude" dimensions with "pixel offsets"
@@ -178,6 +195,8 @@ if __name__ == "__main__":
             help="Number of pixels to include in every direction (NSEW) around the storm's center. Default to 5 pixels (sides of 11 pixels).") 
     parser.add_argument('--res', action='store', type=float, default=0.25,
             help="Spatial resolution in degrees - defaults to 0.25°")
+    parser.add_argument('--rescale', action='store', type=float, default=None,
+            help="If specified, rescale the patches to the specified resolution in degrees. Defaults to None (no rescaling).")
     parser.add_argument('-s', '--suffix', action='store', default='pangu',
             help="Suffix of the input files - defaults to 'pangu'")
     parser.add_argument('-y', '--year', action='store', type=int, default=None,
