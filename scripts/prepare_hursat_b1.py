@@ -18,7 +18,7 @@ import xarray as xr
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from utils.datacube import set_relative_spatial_coords, upscale_and_crop
+from utils.datacube import set_relative_spatial_coords, rescale_and_crop
 
 
 def extract_time_from_filename(filename):
@@ -90,7 +90,7 @@ def load_hourly_snapshots(year, sid, res_hours=6, new_res=None, crop_size=None):
             # Upscale the snapshot to a resolution from its native resolution of 0.07°
             # to 0.25°, to match the resolution of ERA5.
             # At the same time, crop a central patch.
-            snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'),
+            snapshot = rescale_and_crop(snapshot, dims=('lat', 'lon'),
                                         new_res=new_res, crop_size=crop_size)
             # If the snapshot does not contain any NaN values, keep it
             # Once again, the vast majority of snapshots are valid, so this loop
