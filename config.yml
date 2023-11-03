@@ -1,5 +1,5 @@
 paths:
-  ibtracs_original: data/IBTrACS/ibtracs.since1980.list.v04r00.csv
+  ibtracs: data/IBTrACS/ibtracs.since1980.list.v04r00.csv
   ibtracs_preprocessed: data/IBTrACS/ibtracs_preprocessed.csv
   era5: /scratch/cdauvill/era5/pangu/
   era5_patches: /scratch/cdauvill/era5/storm_patches/5/
@@ -9,7 +9,7 @@ paths:
 
 era5:
   # Variables to include in the reanalysis data
-  atmo_variables: []
-  surface_variables: ['u10', 'v10', 'msl']
+  atmo_variables: ['u', 'v']
+  surface_variables: ['u10', 'v10', 'msl', 't2m']
   # Atmospheric pressure levels to include
-  pressure_levels: []
+  pressure_levels: [200, 500, 850]

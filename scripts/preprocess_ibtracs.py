@@ -18,12 +18,11 @@ if __name__ == "__main__":
     # Load the configuration file.
     with open('config.yml', 'r') as f:
         config = yaml.safe_load(f)
+    # Get the path to the IBTrACS dataset.
+    ibtracs_path = config['paths']['ibtracs']
+    output_path = config['paths']['ibtracs_preprocessed']
     # Arguments parsing
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--ibtracs_path', type=str, default=config['paths']['ibtracs_original'],
-                           help='Path to the IBTrACS dataset.')
-    argparser.add_argument('--output_path', type=str, default=config['paths']['ibtracs_preprocessed'],
-                           help='Path to the preprocessed IBTrACS dataset.')
     argparser.add_argument('--start_date', type=str, default='2000-01-01',
                            help='First date to consider for the dataset.')
     argparser.add_argument('--end_date', type=str, default='2021-12-31',
@@ -32,7 +31,7 @@ if __name__ == "__main__":
 
     # Load the IBTrACS data and select the relevant variables.
     # Skip the first row after the header, as it contains the units.
-    ibtracs_df = pd.read_csv(args.ibtracs_path, skiprows=[1], usecols=_SELECTED_VARS_, na_values=[' '],
+    ibtracs_df = pd.read_csv(ibtracs_path, skiprows=[1], usecols=_SELECTED_VARS_, na_values=[' '],
                              parse_dates=['ISO_TIME'])
     # Filter out tracks that are provisional or side tracks.
     ibtracs_df = ibtracs_df[ibtracs_df['TRACK_TYPE'] == 'main']
@@ -67,4 +66,4 @@ if __name__ == "__main__":
     ibtracs_df['LON'] = ibtracs_df['LON'].apply(lambda x: x + 360 if x < 0 else x)
 
     # Save the preprocessed dataset.
-    ibtracs_df.to_csv(args.output_path, index=False)
+    ibtracs_df.to_csv(output_path, index=False)
