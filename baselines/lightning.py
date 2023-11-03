@@ -60,6 +60,8 @@ if __name__ == "__main__":
                         help="Number of time steps to predict.")
     parser.add_argument("--channels", type=int, default=8,
                         help="Number of channels in the first convolutional layer.")
+    parser.add_argument("--depth" , type=int, default=5,
+                        help="Number of convolutional blocks.")
     parser.add_argument("--epochs", type=int, default=30,
                         help="Number of epochs to train the model for.")
     args = parser.parse_args()
@@ -139,7 +141,7 @@ if __name__ == "__main__":
 
     # ====== MODELS CREATION ====== #
     # Initialize the models
-    patch_size = era5_patches.shape[-2:]
+    patch_size = full_patches.shape[-2:]
     datacube_size = (past_steps,) + patch_size
     # The number of scalar variables the model receives is the number of variables
     # (e.g. 2 for lat/lon) times the number of past steps
