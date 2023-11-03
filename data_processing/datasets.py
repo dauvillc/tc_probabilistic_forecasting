@@ -128,6 +128,7 @@ def load_hursat_b1(storms_dataset, use_cache=True, verbose=True):
         print(f"Dataset memory footprint: {hursat_b1_dataset.nbytes / 1e9} GB.")
     return found_storms, hursat_b1_dataset
 
+
 def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
     """
     Loads the ERA5 patches for a given set of storms, from the directory specified
@@ -169,11 +170,14 @@ def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
                                          combine="nested", concat_dim="sid_time")
         # Select the patches corresponding to the storms in storms_dataset
         atmo_patches = select_sid_time(atmo_patches, storms_dataset['SID'], storms_dataset['ISO_TIME'])
+        # Print the memory footprint
+        print(f"Atmospheric patches memory footprint: {atmo_patches.nbytes / 1e9} GB.")
     # Load the surface patches if requested
     if load_surface:
         print("Loading surface patches...")
         surface_patches = xr.open_mfdataset(os.path.join(path, "*_surface_patches.nc"),
                                             combine="nested", concat_dim="sid_time")
         surface_patches = select_sid_time(surface_patches, storms_dataset['SID'], storms_dataset['ISO_TIME'])
+        print(f"Surface patches memory footprint: {surface_patches.nbytes / 1e9} GB.")
 
     return atmo_patches, surface_patches

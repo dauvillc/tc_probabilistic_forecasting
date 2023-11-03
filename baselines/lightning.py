@@ -16,6 +16,7 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
+from utils.utils import hours_to_sincos
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables, output_length,
@@ -49,7 +50,7 @@ def create_model(datacube_size, datacube_channels, num_input_variables, output_l
 
 if __name__ == "__main__":
     # Some parameters
-    input_variables = ['LAT', 'LON']
+    input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
     # Argument parser
     parser = argparse.ArgumentParser()
@@ -75,12 +76,16 @@ if __name__ == "__main__":
     # ====== DATA LOADING ====== #
     # Load the trajectory forecasting dataset
     all_trajs = intensity_dataset()
+    # Add a column with the sin/cos encoding of the hours, which will be used as input
+    # to the model
+    sincos_hours = hours_to_sincos(all_trajs['ISO_TIME'])
+    all_trajs['HOUR_SIN'], all_trajs['HOUR_COS'] = sincos_hours[:, 0], sincos_hours[:, 1]
     # Load the HURSAT-B1 data
     found_storms, hursat_data = load_hursat_b1(all_trajs, use_cache=True, verbose=True)
     # Keep only the storms for which we have HURSAT-B1 data
     all_trajs = all_trajs.merge(found_storms, on=['SID', 'ISO_TIME'])
     # Load the ERA5 patches associated to the dataset
-    atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
+    atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=True)
     # Convert the patches to torch tensors
     era5_patches = datacube_to_tensor(surface_patches)
     hursat_patches = datacube_to_tensor(hursat_data)
@@ -124,9 +129,10 @@ if __name__ == "__main__":
         return train_loader, val_loader
 
     # Instantiate the train and validation data loaders
-    loader_era5, val_loader_era5 = create_dataloaders(era5_patches)
-    loader_hursat, val_loader_hursat = create_dataloaders(hursat_patches)
-    loader_full, val_loader_full = create_dataloaders(full_patches)
+    batch_size = 128
+    loader_era5, val_loader_era5 = create_dataloaders(era5_patches, batch_size=batch_size)
+    loader_hursat, val_loader_hursat = create_dataloaders(hursat_patches, batch_size=batch_size)
+    loader_full, val_loader_full = create_dataloaders(full_patches, batch_size=batch_size)
     loaders = {'era5': (loader_era5, val_loader_era5),
                'hursat': (loader_hursat, val_loader_hursat),
                'era5+hursat': (loader_full, val_loader_full)}
@@ -138,9 +144,9 @@ if __name__ == "__main__":
     # The number of scalar variables the model receives is the number of variables
     # (e.g. 2 for lat/lon) times the number of past steps
     num_input_variables = len(input_variables) * past_steps
-    model_era5 = create_model(datacube_size, 3, num_input_variables, future_steps, args.channels)
+    model_era5 = create_model(datacube_size, 4, num_input_variables, future_steps, args.channels)
     model_hursat = create_model(datacube_size, 1, num_input_variables, future_steps, args.channels)
-    model_full = create_model(datacube_size, 4, num_input_variables, future_steps, args.channels)
+    model_full = create_model(datacube_size, 5, num_input_variables, future_steps, args.channels)
     models = {'era5': model_era5, 'hursat': model_hursat, 'era5+hursat': model_full}
 
     # ====== MODELS TRAINING ====== #
@@ -149,7 +155,7 @@ if __name__ == "__main__":
     trainers = {}
     for name, model in models.items():
         print(f"Training model {name}...")
-        metrics_tracker = MetricTracker()
+        metrics_tracker = MetricTracker(batch_size)
         trainer = pl.Trainer(max_epochs=epochs, callbacks=[metrics_tracker])
         trainer.fit(model, *loaders[name])
         train_losses[name] = metrics_tracker.train_loss
