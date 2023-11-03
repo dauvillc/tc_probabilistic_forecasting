@@ -36,7 +36,7 @@ def extract_time_from_filename(filename):
     return timestamp
 
 
-def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
+def load_hourly_snapshots(year, sid, res_hours=6, new_res=None, crop_size=None):
     """
     Loads the hourly snapshots of a specific storm, and assembles
     them into a single xarray DataArray.
@@ -51,6 +51,8 @@ def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
         The storm ID.
     res_hours : int, optional
         The time resolution of the snapshots, in hours. Default is 6.
+    new_res : float, optional
+        The resolution to which the snapshots should be upscaled, in degrees.
     crop_size : int, optional
         The size of the central crop, in pixels. Default is None, which means no crop.
     
@@ -88,7 +90,8 @@ def load_hourly_snapshots(year, sid, res_hours=6, crop_size=None):
             # Upscale the snapshot to a resolution from its native resolution of 0.07°
             # to 0.25°, to match the resolution of ERA5.
             # At the same time, crop a central patch.
-            snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'), new_res=0.25, crop_size=crop_size)
+            snapshot = upscale_and_crop(snapshot, dims=('lat', 'lon'),
+                                        new_res=new_res, crop_size=crop_size)
             # If the snapshot does not contain any NaN values, keep it
             # Once again, the vast majority of snapshots are valid, so this loop
             # will only be executed a few times.
@@ -127,6 +130,8 @@ if __name__ == "__main__":
                         help="The last year to consider.")
     parser.add_argument("--crop_size", "-c", type=int, default=None,
                         help="The size of the central crop, in pixels.")
+    parser.add_argument("--upscale", "-u", type=float, default=None,
+                        help="The resolution to which the snapshots should be upscaled, in degrees")
     args = parser.parse_args()
     start_year, end_year = args.start_year + 2000, args.end_year + 2000
 
@@ -150,7 +155,7 @@ if __name__ == "__main__":
         storms = os.listdir(year_dir)
         for sid in tqdm(storms):
             # This will also crop central patches, if crop_size was specified
-            snapshots = load_hourly_snapshots(year, sid, crop_size=args.crop_size)
+            snapshots = load_hourly_snapshots(year, sid, crop_size=args.crop_size, new_res=args.upscale)
             # Save the snapshots in a netCDF file
             if snapshots is not None:
                 snapshots.to_netcdf(os.path.join(output_dir, f"{sid}.nc"))
