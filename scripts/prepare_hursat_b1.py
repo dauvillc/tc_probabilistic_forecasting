@@ -59,8 +59,9 @@ def load_hourly_snapshots(year, sid, res_hours=6, new_res=None, crop_size=None):
     Returns
     -------
     xarray.DataArray of dimensions (time, lat, lon) or None
-        The hourly snapshots of the storm. If for some timestep, no data was found
-        from any satellite, returns None.
+        The hourly snapshots of the storm. If at a time t no valid snapshot was found,
+        returns the observations until t-1. If no valid snapshot was found at all,
+        returns None.
     """
     # Path to the storm's directory
     storm_dir = os.path.join(hursat_b1_path, str(year), sid)
@@ -99,9 +100,13 @@ def load_hourly_snapshots(year, sid, res_hours=6, new_res=None, crop_size=None):
                 break
             snapshot = None
         if snapshot is None:
-            # Return None if no valid snapshot was found, discard the storm
-            return None
+            # If no valid snapshot was found, return the snapshots that were found 
+            # until now
+            break
         snapshots.append(snapshot)
+    # If no valid snapshot was found at all, return None
+    if len(snapshots) == 0:
+        return None
          
     # At this point, we cannot concatenate the snapshots because they have different
     # values of latitude and longitude. We need to set the relative spatial coordinates
