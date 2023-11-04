@@ -158,7 +158,8 @@ if __name__ == "__main__":
     for name, model in models.items():
         print(f"Training model {name}...")
         metrics_tracker = MetricTracker(batch_size)
-        trainer = pl.Trainer(max_epochs=epochs, callbacks=[metrics_tracker])
+        trainer = pl.Trainer(accelerator='gpu', precision="bf16-mixed",
+                             max_epochs=epochs, callbacks=[metrics_tracker])
         trainer.fit(model, *loaders[name])
         train_losses[name] = metrics_tracker.train_loss
         val_losses[name] = metrics_tracker.val_loss
@@ -188,7 +189,7 @@ if __name__ == "__main__":
     # Make predictions on the validation set for each model
     val_preds = {}
     for name, model in models.items():
-        val_preds[name] = torch.cat(trainers[name].predict(model, loaders[name][1]), dim=0)
+        val_preds[name] = torch.cat(trainers[name].predict(model, loaders[name][1]), dim=0).to(torch.float32)
 
     # Plot the bias of the predictions for each model
     average_bias = plot_intensity_bias(y_true, val_preds, savepath="figures/baselines/intensity_cnn_bias.png")
