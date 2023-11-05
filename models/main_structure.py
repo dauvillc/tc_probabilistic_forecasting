@@ -24,11 +24,16 @@ class StormPredictionModel(pl.LightningModule):
         The model to use to project the scalar variables into a datacube.
         Should take as input a tensor of shape (N, D * n_input_vars)
         and return a tensor of shape (N, C', D, H, W).
+    loss_function : callable, optional
+        The loss function to use. If None, the mean squared error is used.
     """
-    def __init__(self, prediction_model, projection_model):
+    def __init__(self, prediction_model, projection_model, loss_function=None):
         super().__init__()
         self.prediction_model = prediction_model
         self.projection_model = projection_model
+        self.loss_function = loss_function
+        if loss_function is None:
+            self.loss_function = F.mse_loss
 
     def training_step(self, batch, batch_idx):
         """
@@ -37,7 +42,7 @@ class StormPredictionModel(pl.LightningModule):
         past_variables, past_data, target_variables = batch
         prediction = self.forward(past_variables, past_data)
         # Compute the loss
-        loss = F.mse_loss(prediction, target_variables)
+        loss = self.loss_function(prediction, target_variables)
         # Log the loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         return loss
@@ -49,7 +54,7 @@ class StormPredictionModel(pl.LightningModule):
         past_variables, past_data, target_variables = batch
         prediction = self.forward(past_variables, past_data)
         # Compute the loss
-        loss = F.mse_loss(prediction, target_variables)
+        loss = self.loss_function(prediction, target_variables)
         # Log the loss
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         return loss

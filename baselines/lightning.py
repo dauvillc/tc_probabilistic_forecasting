@@ -17,10 +17,11 @@ from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
 from utils.utils import hours_to_sincos
+from utils.loss_functions import WeightedMSELoss
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables, output_length,
-                 hidden_channels=8):
+                 hidden_channels=8, loss_function=None):
     """
     Creates a model for the storm prediction task.
 
@@ -34,6 +35,10 @@ def create_model(datacube_size, datacube_channels, num_input_variables, output_l
         The number of scalar variables the model receives as input.
     output_length : int
         The number of time steps to predict.
+    hidden_channels : int, optional
+        The number of channels in the first convolutional layer.
+    loss_function : callable, optional
+        The loss function to use. If None, the mean squared error is used.
     """
     # Prediction network (3d CNN + Prediction head)
     cnn_model = CNN3D(datacube_size,
@@ -44,7 +49,7 @@ def create_model(datacube_size, datacube_channels, num_input_variables, output_l
     projection_model = VectorProjection3D(num_input_variables,
                                           (datacube_channels, ) + datacube_size)
     # Assemble the main structure, built with Lightning
-    model = StormPredictionModel(cnn_model, projection_model)
+    model = StormPredictionModel(cnn_model, projection_model, loss_function=loss_function)
     return model
 
 
@@ -109,6 +114,7 @@ if __name__ == "__main__":
     print(f"Number of trajectories in the test set: {len(test_trajs)}")
 
     # ====== DATASET CREATION ====== #
+
     def create_dataloaders(patches, batch_size=128):
         """
         Creates the train and validation dataloaders for the given patches.
@@ -140,15 +146,18 @@ if __name__ == "__main__":
                'era5+hursat': (loader_full, val_loader_full)}
 
     # ====== MODELS CREATION ====== #
+    # Create the loss function
+    all_intensities = all_trajs['INTENSITY'].values
+    loss_function = WeightedMSELoss(all_intensities)
     # Initialize the models
     patch_size = full_patches.shape[-2:]
     datacube_size = (past_steps,) + patch_size
     # The number of scalar variables the model receives is the number of variables
     # (e.g. 2 for lat/lon) times the number of past steps
     num_input_variables = len(input_variables) * past_steps
-    model_era5 = create_model(datacube_size, 4, num_input_variables, future_steps, args.channels)
-    model_hursat = create_model(datacube_size, 1, num_input_variables, future_steps, args.channels)
-    model_full = create_model(datacube_size, 5, num_input_variables, future_steps, args.channels)
+    model_era5 = create_model(datacube_size, 4, num_input_variables, future_steps, args.channels, loss_function=loss_function)
+    model_hursat = create_model(datacube_size, 1, num_input_variables, future_steps, args.channels, loss_function=loss_function)
+    model_full = create_model(datacube_size, 5, num_input_variables, future_steps, args.channels, loss_function=loss_function)
     models = {'era5': model_era5, 'hursat': model_hursat, 'era5+hursat': model_full}
 
     # ====== MODELS TRAINING ====== #
