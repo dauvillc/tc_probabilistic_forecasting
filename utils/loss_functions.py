@@ -15,8 +15,11 @@ class WeightedMSELoss(torch.nn.Module):
     ----------
     all_intensities : array-like
         Intensities of all samples in the dataset.
+    weight_capping_intensity: float or None, optional
+        If not None, the weights will remain constant for intensities
+        greather or equal to this value.
     """
-    def __init__(self, all_intensities):
+    def __init__(self, all_intensities, weight_capping_intensity=None):
         super().__init__()
         # Divide the intensities in 100 bins
         bins = 20
@@ -29,6 +32,15 @@ class WeightedMSELoss(torch.nn.Module):
         # Compute the weights of each bin as 1 / probability
         # when the probability is non-zero, and 0 otherwise.
         self.weights = torch.where(probs != 0, 1 / probs, torch.zeros_like(probs))
+        # If the weight capping intensity is not None:
+        # - Find the index of the bin corresponding to the weight capping intensity
+        # - Fetch the weight w of this bin
+        # - Cap all the weights to w
+        if weight_capping_intensity is not None:
+            weight_capping_bin_index = torch.bucketize(torch.tensor(weight_capping_intensity),
+                                                       bin_edges) - 1
+            max_weight = self.weights[weight_capping_bin_index]
+            self.weights[self.weights > max_weight] = max_weight
         # Use the square root of the weights, as they will be squared in the loss
         self.weights = torch.sqrt(self.weights)
         # Normalize the weights

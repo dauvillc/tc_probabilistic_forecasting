@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # ====== MODELS CREATION ====== #
     # Create the loss function
     all_intensities = all_trajs['INTENSITY'].values
-    loss_function = WeightedMSELoss(all_intensities)
+    loss_function = WeightedMSELoss(all_intensities, weight_capping_intensity=60)
     # Initialize the models
     patch_size = full_patches.shape[-2:]
     datacube_size = (past_steps,) + patch_size
