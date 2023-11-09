@@ -11,19 +11,19 @@ class VectorProjection3D(nn.Module):
 
     Parameters
     ----------
-    input_shape : int
-        Number of input channels.
+    input_len : int
+        Length of the input vector.
     output_shape : int
         Size of the desired 3D output under the form (C, D, H, W).
     """
-    def __init__(self, input_shape, output_shape):
+    def __init__(self, input_len, output_shape):
         super().__init__()
-        self.input_shape = input_shape
+        self.input_len = input_len
         self.output_shape = output_shape
         # Input batch normalization
-        self.input_batchnorm = nn.BatchNorm1d(input_shape)
+        self.input_batchnorm = nn.BatchNorm1d(input_len)
         # Linear layer to project to a vector of length 1 * D * H * W
-        self.linear = nn.Linear(input_shape, output_shape[1] * output_shape[2] * output_shape[3])
+        self.linear = nn.Linear(input_len, output_shape[1] * output_shape[2] * output_shape[3])
         # Reshape the output to (1, D, H, W) and apply batch normalization
         self.batchnorm = nn.BatchNorm3d(1)
         # 3D Conv layers to project to the desired output shape (C, D, H, W)
