@@ -85,10 +85,11 @@ def plot_intensity_bias(y_true, y_pred, savepath=None):
                            ignore_index=True)
 
     # Plot the distribution of the bias for each model and for each predicted time step
-    # using a violin plot
+    # using boxplots
     with sns.axes_style('whitegrid'):
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.violinplot(x='time step', y='bias', hue='model', data=df, ax=ax)
+        # Also make the figure size depend on the number of predicted time steps
+        fig, ax = plt.subplots(figsize=(10, 5 + 0.5 * n_predicted_steps))
+        sns.boxplot(x='time step', y='bias', hue='model', data=df, ax=ax)
         ax.set_xlabel("Predicted time step (hours)")
         ax.set_ylabel("Bias (m/s)")
         ax.set_title("Distribution of the bias of the intensity prediction for each predicted time step")
@@ -141,10 +142,10 @@ def plot_intensity_distribution(y_true, y_pred, savepath=None):
                                           'intensity': y_pred[model_name][:, i]})],
                            ignore_index=True)
     # Plot the distribution of the intensity for each model and for each predicted time step
-    # using a violin plot
+    # using boxplots 
     with sns.axes_style('whitegrid'):
         fig, ax = plt.subplots(figsize=(10, 5))
-        sns.violinplot(x='time step', y='intensity', hue='model', data=df, ax=ax)
+        sns.boxplot(x='time step', y='intensity', hue='model', data=df, ax=ax)
         ax.set_xlabel("Predicted time step (hours)")
         ax.set_ylabel("Intensity (m/s)")
         ax.set_title("Distribution of the intensity prediction for each predicted time step")
