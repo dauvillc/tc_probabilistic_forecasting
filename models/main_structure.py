@@ -2,7 +2,6 @@
 Implements the training and evaluation tools using the Lightning framework.
 """
 import torch
-import torch.nn.functional as F
 import pytorch_lightning as pl
 
 
@@ -33,7 +32,7 @@ class StormPredictionModel(pl.LightningModule):
         self.projection_model = projection_model
         self.loss_function = loss_function
         if loss_function is None:
-            self.loss_function = F.mse_loss
+            self.loss_function = torch.nn.MSELoss(reduction="mean")
 
     def training_step(self, batch, batch_idx):
         """
