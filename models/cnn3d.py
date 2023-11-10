@@ -103,16 +103,16 @@ class CNN3D(nn.Module):
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])
         d, h, w = input_size
-        for _ in range(conv_blocks):
-            self.conv_blocks.append(ConvBlock3D(c, 2 * c))
-            c *= 2
+        for i in range(conv_blocks):
+            new_c = (i + 1) * hidden_channels
+            self.conv_blocks.append(ConvBlock3D(c, new_c))
+            c = new_c
             # Keep track of the output size of each block
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))
         # Linear prediction head
-        self.fc1 = nn.Linear(c * d * h * w, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 64)
-        self.fc4 = nn.Linear(64, output_size)
+        self.fc1 = nn.Linear(c * d * h * w, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, output_size)
 
 
     def forward(self, past_images, past_variables=None):
@@ -151,7 +151,6 @@ class CNN3D(nn.Module):
         # Apply the prediction head
         x = torch.selu(self.fc1(x))
         x = torch.selu(self.fc2(x))
-        x = torch.selu(self.fc3(x))
-        x = self.fc4(x)
+        x = self.fc3(x)
         return x
 
