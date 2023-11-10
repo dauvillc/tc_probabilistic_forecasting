@@ -12,19 +12,23 @@ class MetricTracker(Callback):
 
     Parameters
     ----------
-    batch_size : int
+    batch_size : int, optional
         The batch size used during training and validation.
+        If specified, the loss will be divided by the batch size.
     """
-    def __init__(self, batch_size):
+    def __init__(self, batch_size=None):
         self.train_loss = []
         self.val_loss = []
         self.batch_size = batch_size
 
     def on_train_epoch_end(self, trainer, pl_module):
-        # Pytorch Lightning divides by the number of batches in one epoch, but not by
-        # the batch size. We need to divide by the batch size to get the average loss
-        # per sample
-        self.train_loss.append(trainer.callback_metrics['train_loss'].item() / self.batch_size)
+        loss = trainer.callback_metrics['train_loss'].item()
+        if self.batch_size is not None:
+            loss /= self.batch_size
+        self.train_loss.append(loss)
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        self.val_loss.append(trainer.callback_metrics['val_loss'].item() / self.batch_size)
+        loss = trainer.callback_metrics['val_loss'].item()
+        if self.batch_size is not None:
+            loss /= self.batch_size
+        self.val_loss.append(loss)

@@ -166,7 +166,7 @@ if __name__ == "__main__":
     trainers = {}
     for name, model in models.items():
         print(f"Training model {name}...")
-        metrics_tracker = MetricTracker(batch_size)
+        metrics_tracker = MetricTracker()
         trainer = pl.Trainer(accelerator='gpu', precision="bf16-mixed",
                              max_epochs=epochs, callbacks=[metrics_tracker])
         trainer.fit(model, *loaders[name])
