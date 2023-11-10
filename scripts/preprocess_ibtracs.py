@@ -54,6 +54,11 @@ if __name__ == "__main__":
     # Remove the storms that have at least one time step lacking the lat or lon information.
     ibtracs_df = ibtracs_df[~ibtracs_df['SID'].isin(missing_lat_lon)]
 
+    # =========== INTENSITY SELECTION ===========
+    # For each storm, count how many time steps have a wind speed of at least 34 knots (cat -1).
+    # If the number of time steps is less than 8 (2 days), remove the storm.
+    ibtracs_df = ibtracs_df.groupby('SID').filter(lambda x: x['USA_WIND'].ge(34).sum() >= 8)
+
     # =========== UNIT CONVERSION ===========
     # Create a column for the Saffir-Simpson scale category of the storm.
     ibtracs_df['SS_SCALE'] = pd.cut(ibtracs_df['USA_WIND'],
