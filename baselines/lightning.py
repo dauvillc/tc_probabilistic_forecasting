@@ -17,7 +17,7 @@ from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
 from utils.utils import hours_to_sincos
-from utils.loss_functions import WeightedMSELoss
+from utils.loss_functions import WeightedLoss
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables, output_length,
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # ====== MODELS CREATION ====== #
     # Create the loss function
     all_intensities = all_trajs['INTENSITY'].values
-    loss_function = WeightedMSELoss(all_intensities, weight_capping_intensity=60)
+    loss_function = WeightedLoss(all_intensities, weight_capping_intensity=60)
     # Initialize the models
     patch_size = full_patches.shape[-2:]
     datacube_size = (past_steps,) + patch_size

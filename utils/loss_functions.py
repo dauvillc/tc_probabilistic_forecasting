@@ -3,11 +3,13 @@ Implementation of loss functions.
 """
 import matplotlib.pyplot as plt
 import torch
+from torch.nn import MSELoss
 
 
-class WeightedMSELoss(torch.nn.Module):
+class WeightedLoss(torch.nn.Module):
     """
-    Implements a weighted mean squared error loss function.
+    Implements a weighted loss function, in which the weights depend on the intensity of
+    the storms.
     The intensities are divided into bins. The weight of each bin is 1 / probability
     of the bin.
     
@@ -15,12 +17,19 @@ class WeightedMSELoss(torch.nn.Module):
     ----------
     all_intensities : array-like
         Intensities of all samples in the dataset.
+    base_loss: function of the form (y_pred, y_true) -> torch.Tensor
+        Base loss function. The returned tensor should be of shpae (N,) where N is the batch size,
+        i.e. no reduction is applied.
+        Default is the mean squared error.
     weight_capping_intensity: float or None, optional
         If not None, the weights will remain constant for intensities
         greather or equal to this value.
     """
-    def __init__(self, all_intensities, weight_capping_intensity=None):
+    def __init__(self, all_intensities, base_loss=None, weight_capping_intensity=None):
         super().__init__()
+        if base_loss is None:
+            base_loss = MSELoss(reduce=None)
+        self.base_loss = base_loss
         # Divide the intensities in 100 bins
         bins = 20
         # Convert the intensities to a tensor
@@ -41,8 +50,6 @@ class WeightedMSELoss(torch.nn.Module):
                                                        bin_edges) - 1
             max_weight = self.weights[weight_capping_bin_index]
             self.weights[self.weights > max_weight] = max_weight
-        # Use the square root of the weights, as they will be squared in the loss
-        self.weights = torch.sqrt(self.weights)
         # Normalize the weights
         self.weights = self.weights / torch.sum(self.weights)
         # Store the bin edges for later use
@@ -73,7 +80,7 @@ class WeightedMSELoss(torch.nn.Module):
         # Load the weights on the same device as the tensors
         weights = weights.to(y_true.device)
         # Compute the loss
-        loss = torch.mean(weights * (y_pred - y_true) ** 2)
+        loss = torch.mean(weights * self.base_loss(y_pred, y_true))
         return loss
     
     def plot(self):
