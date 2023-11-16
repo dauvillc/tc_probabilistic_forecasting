@@ -43,7 +43,7 @@ def create_model(datacube_size, datacube_channels, num_input_variables, output_l
     # Prediction network (3d CNN + Prediction head)
     cnn_model = CNN3D(datacube_size,
                       input_channels=datacube_channels, input_variables=num_input_variables,
-                      output_size=future_steps,
+                      output_shape=future_steps,
                       hidden_channels=args.channels)
     # Projection network (vector projection + 3d CNN)
     projection_model = VectorProjection3D(num_input_variables,

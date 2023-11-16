@@ -3,6 +3,7 @@ Implements a single 3D CNN for various tasks.
 """
 import torch
 import torch.nn as nn
+from math import prod
 from models.variables_projection import VectorProjection3D
 
 
@@ -80,17 +81,21 @@ class CNN3D(nn.Module):
         Number of input variables I (vector containing scalar variables, such
         as latitude and longitude).
         Can be zero.
-    output_size: int
-        Number of output channels.
+    output_shape: int or tuple of ints
+        Shape of the output, not accounting for the batch size.
+        If an integer, size of the output vector.
     conv_blocks: int, optional
         Number of convolutional blocks.
     hidden_channels: int, optional
         Number of hidden channels in the first convolutional layer.
     """
-    def __init__(self, input_size, input_channels, input_variables, output_size,
+    def __init__(self, input_size, input_channels, input_variables, output_shape,
                  conv_blocks=4, hidden_channels=4):
         super().__init__()
         d, h, w = input_size
+        if isinstance(output_shape, int):
+            output_shape = (output_shape,)
+        self.output_shape = output_shape
         # If there are input variables, add a vector projection layer
         self.input_variables = input_variables
         if input_variables > 0:
@@ -112,6 +117,7 @@ class CNN3D(nn.Module):
         # Linear prediction head
         self.fc1 = nn.Linear(c * d * h * w, 128)
         self.fc2 = nn.Linear(128, 64)
+        output_size = prod(output_shape)
         self.fc3 = nn.Linear(64, output_size)
 
 
@@ -152,5 +158,6 @@ class CNN3D(nn.Module):
         x = torch.selu(self.fc1(x))
         x = torch.selu(self.fc2(x))
         x = self.fc3(x)
-        return x
+        # Reshape x to the desired output shape
+        return x.view(x.shape[0], *self.output_shape)
 
