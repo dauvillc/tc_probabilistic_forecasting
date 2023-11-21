@@ -3,7 +3,87 @@ Implementation of loss functions.
 """
 import matplotlib.pyplot as plt
 import torch
-from torch.nn import MSELoss
+import torch.nn as nn
+
+
+class QuantileLoss(nn.Module):
+    """
+    Implements the standard quantile loss function.
+    
+    Parameters
+    ----------
+    quantile : float
+        The quantile to be estimated.
+    reduction: str, optional.
+        Can be either 'none', 'mean' or 'sum'.
+        Defaults to 'mean'.
+    """
+    def __init__(self, quantile, reduction="none"):
+        super().__init__()
+        self.quantile = quantile
+        if reduction == "none":
+            self.reduction = lambda x: x
+        elif reduction == "mean":
+            self.reduction = torch.mean
+        elif reduction == "sum":
+            self.reduction = torch.sum
+        else:
+            raise ValueError(f"The reduction argument '{reduction}' was not understood.")
+
+    def __call__(self, y_pred, y_true):
+        result = torch.max((1 - self.quantile) * (y_true - y_pred),
+                           self.quantile * (y_pred - y_true))
+        return self.reduction(result)
+
+
+class MultipleQuantileLoss(nn.Module):
+    """
+    Implements the multiple quantile loss function.
+    The prediction should have the shape (N, T, Q) where N is the batch size,
+    T is the number of time steps, and Q is the number of quantiles.
+
+    Parameters
+    ----------
+    quantiles : array-like of floats
+        The quantiles to be estimated.
+    weights: array-like of floats, optional
+        The weights associated with each quantile.
+        By default, no weights are applied.
+    reduction: str, optional
+        Either "none" (default), "mean" or "sum".
+    """
+    def __init__(self, quantiles, weights=None, reduction="none"):
+        super().__init__()
+        self.quantiles = torch.tensor(quantiles)
+        # The term (y_true - y_pred) will have shape (N, T, Q).
+        self.quantiles = self.quantiles.unsqueeze(0)
+        self.reduction = reduction
+        if weights is not None:
+            weights = torch.tensor(weights).unsqueeze(1)
+        self.weights = weights
+        # Variable to remember whether this has been called before
+        self.called = False
+
+    def __call__(self, y_pred, y_true):
+        diff = y_true.unsqueeze(2) - y_pred
+        # First call: adjust the shape of the quantiles and 
+        # transfer the tensors to the same device as the inputs
+        if not self.called:
+            self.called = True
+            self.quantiles = self.quantiles.expand_as(diff[0])
+            self.quantiles = self.quantiles.to(y_true.device)
+            if self.weights is not None:
+                self.weights = self.weights.to(y_true.device)
+        loss = torch.max(self.quantiles * diff, (self.quantiles - 1) * diff)
+        # Apply the weights
+        if self.weights is not None:
+            loss = loss * self.weights
+        # Apply the reduction
+        if self.reduction == "mean":
+            loss = torch.mean(loss)
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        return loss
 
 
 class WeightedLoss(torch.nn.Module):
@@ -28,7 +108,7 @@ class WeightedLoss(torch.nn.Module):
     def __init__(self, all_intensities, base_loss=None, weight_capping_intensity=None):
         super().__init__()
         if base_loss is None:
-            base_loss = MSELoss(reduce=None)
+            base_loss = nn.MSELoss(reduction="none")
         self.base_loss = base_loss
         # Divide the intensities in 100 bins
         bins = 20
