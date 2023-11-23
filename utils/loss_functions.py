@@ -46,38 +46,60 @@ class MultipleQuantileLoss(nn.Module):
     ----------
     quantiles : array-like of floats
         The quantiles to be estimated.
+    normalization : bool, optional
+        Whether to normalize each individual quantile loss to make their
+        asymptotic variances equal.
     weights: array-like of floats, optional
         The weights associated with each quantile.
         By default, no weights are applied.
     reduction: str, optional
         Either "none" (default), "mean" or "sum".
     """
-    def __init__(self, quantiles, weights=None, reduction="none"):
+    def __init__(self, quantiles, normalize=True, weights=None, reduction="none"):
         super().__init__()
         self.quantiles = torch.tensor(quantiles)
         # The term (y_true - y_pred) will have shape (N, T, Q).
-        self.quantiles = self.quantiles.unsqueeze(0)
+        self.quantiles = self.quantiles.unsqueeze(0)  # (1, Q)
         self.reduction = reduction
-        if weights is not None:
-            weights = torch.tensor(weights).unsqueeze(1)
-        self.weights = weights
         # Variable to remember whether this has been called before
         self.called = False
+        # Normalization constants: the asymptotic variance of the quantile loss
+        # is q(1-q)x where q is the quantile and x only depends on the data. Therefore,
+        # we can normalize the quantile loss by dividing it by q(1-q).
+        if normalize:
+            normalization_constants = self.quantiles * (1 - self.quantiles)
+        # Weights
+        # Note: the output will be ouput * weights / normalization_constants
+        # so we can already divide the weights by the normalization constants
+        # to avoid doing it at each call.
+        # The following makes sure we can just multiply the weights by the
+        # output no matter the normalization and weights arguments.
+        self.weights = None
+        if weights is not None:
+            self.weights = torch.tensor(weights)
+            if normalize:
+                self.weights = self.weights / self.normalization_constants
+        else:
+            if normalize:
+                self.weights = 1 / normalization_constants
+            else:
+                # If no weights are provided and no normalization is applied,
+                # we can just use a tensor of ones.
+                self.weights = torch.ones_like(self.quantiles)
 
     def __call__(self, y_pred, y_true):
-        diff = y_true.unsqueeze(2) - y_pred
+        diff = y_true.unsqueeze(2) - y_pred  # (N, T, Q)
         # First call: adjust the shape of the quantiles and 
         # transfer the tensors to the same device as the inputs
         if not self.called:
             self.called = True
             self.quantiles = self.quantiles.expand_as(diff[0])
             self.quantiles = self.quantiles.to(y_true.device)
-            if self.weights is not None:
-                self.weights = self.weights.to(y_true.device)
+            self.weights = self.weights.expand_as(diff[0])
+            self.weights = self.weights.to(y_true.device)
         loss = torch.max(self.quantiles * diff, (self.quantiles - 1) * diff)
-        # Apply the weights
-        if self.weights is not None:
-            loss = loss * self.weights
+        # Apply the normalization and the weights at the same time
+        loss = loss * self.weights
         # Apply the reduction
         if self.reduction == "mean":
             loss = torch.mean(loss)

@@ -3,6 +3,7 @@ Implements various utilities.
 """
 import numpy as np
 import pandas as pd
+import torch
 
 
 def to_numpy(tensor):
@@ -61,3 +62,17 @@ def hours_to_sincos(times):
     # Compute the sin/cos encoding
     times = np.stack([np.sin(times), np.cos(times)], axis=1)
     return times
+
+
+def matplotlib_markers(num):
+    """
+    Returns a list of matplotlib markers, which can be used to plot num lines
+    and cycles through the markers.
+    
+    Parameters
+    ----------
+    num : int
+        The number of markers to return.
+    """
+    markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd']
+    return [markers[i % len(markers)] for i in range(num)]

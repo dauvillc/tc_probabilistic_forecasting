@@ -20,6 +20,7 @@ from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
 from utils.utils import hours_to_sincos
 from utils.loss_functions import MultipleQuantileLoss
+from plotting.quantiles import plot_quantiles_validity
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables,
@@ -235,5 +236,6 @@ if __name__ == "__main__":
         plt.tight_layout()
         plt.savefig('figures/quantiles/quantiles_loss.png')
 
-
+    # Plot the validity of the predicted quantiles
+    plot_quantiles_validity(val_preds, y_true, quantiles, savepath='figures/quantiles/validity.png')
 
