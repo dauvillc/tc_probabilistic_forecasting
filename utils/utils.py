@@ -5,6 +5,18 @@ import numpy as np
 import pandas as pd
 
 
+def to_numpy(tensor):
+    """
+    Converts a tensor or array-like to a numpy array.
+    """
+    if isinstance(tensor, np.ndarray):
+        return tensor
+    elif isinstance(tensor, torch.Tensor):
+        return tensor.numpy(force=True)
+    else:
+        return np.array(tensor)
+
+
 def daterange(start_date, end_date, step):
     """
     Yields a range of dates.
