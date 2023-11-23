@@ -8,6 +8,7 @@ import torch
 import yaml
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
+from torch.nn import MSELoss
 from tasks.intensity import intensity_dataset, plot_intensity_bias, plot_intensity_distribution
 from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensor
 from data_processing.datasets import load_hursat_b1, load_era5_patches
@@ -17,7 +18,6 @@ from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
 from utils.utils import hours_to_sincos
-from utils.loss_functions import WeightedLoss
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables, output_length,
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # ====== MODELS CREATION ====== #
     # Create the loss function
     all_intensities = all_trajs['INTENSITY'].values
-    loss_function = WeightedLoss(all_intensities, weight_capping_intensity=60)
+    loss_function = MSELoss(reduction='mean')
     # Initialize the models
     patch_size = full_patches.shape[-2:]
     datacube_size = (past_steps,) + patch_size
