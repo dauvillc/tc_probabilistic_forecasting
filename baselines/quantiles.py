@@ -7,7 +7,9 @@ import argparse
 import torch
 import yaml
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pytorch_lightning as pl
+import numpy as np
 from tasks.intensity import intensity_dataset, plot_intensity_bias, plot_intensity_distribution
 from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensor
 from data_processing.datasets import load_hursat_b1, load_era5_patches
@@ -60,7 +62,7 @@ if __name__ == "__main__":
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
-    quantiles = [0.1, 0.5, 0.9]
+    quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99])
     # Argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--past_steps", type=int, default=3,
@@ -143,7 +145,10 @@ if __name__ == "__main__":
     # Instantiate the train and validation data loaders
     batch_size = 128
     loader_era5, val_loader_era5 = create_dataloaders(era5_patches, batch_size=batch_size)
-    loaders = {'era5': (loader_era5, val_loader_era5)}
+    loader_hursat, val_loader_hursat = create_dataloaders(hursat_patches, batch_size=batch_size)
+    loader_full, val_loader_full = create_dataloaders(full_patches, batch_size=batch_size)
+    loaders = {'era5': (loader_era5, val_loader_era5), 'hursat': (loader_hursat, val_loader_hursat),
+                'era5 & hursat': (loader_full, val_loader_full)}
 
     # ====== MODELS CREATION ====== #
     # Create the loss function
@@ -164,7 +169,7 @@ if __name__ == "__main__":
     model_full = create_model(datacube_size, 5, num_input_variables,
                               future_steps, len(quantiles),
                               args.channels, loss_function=loss_function)
-    models = {'era5': model_era5}
+    models = {'era5': model_era5, 'hursat': model_hursat, 'era5 & hursat': model_full}
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
@@ -172,7 +177,7 @@ if __name__ == "__main__":
     trainers = {}
     for name, model in models.items():
         print(f"Training model {name}...")
-        metrics_tracker = MetricTracker(batch_size)
+        metrics_tracker = MetricTracker()
         trainer = pl.Trainer(accelerator='gpu', precision="bf16-mixed",
                              max_epochs=epochs, callbacks=[metrics_tracker])
         trainer.fit(model, *loaders[name])
@@ -205,5 +210,30 @@ if __name__ == "__main__":
     val_preds = {}
     for name, model in models.items():
         val_preds[name] = torch.cat(trainers[name].predict(model, loaders[name][1]), dim=0).to(torch.float32)
+
+    # Compute the loss for each quantile and each model
+    losses = {}
+    eval_loss_function = MultipleQuantileLoss(quantiles=quantiles, reduction="none")
+    for name, preds in val_preds.items():
+        losses[name] = eval_loss_function(preds, y_true).mean(dim=0).cpu().numpy()
+    # Plot the losses in one subplot per time step, as rows
+    with sns.axes_style("whitegrid"):
+        fig, axes = plt.subplots(future_steps, 1, figsize=(12, 8))
+        for i in range(future_steps):
+            ax = axes[i]
+            # Plot the losses for each model
+            # The losses have shape (n_time_steps, n_quantiles)
+            for name, loss in losses.items():
+                ax.plot(loss[i], label=name)
+            ax.set_xlabel("Quantile")
+            ax.set_ylabel("Loss")
+            ax.set_title(f"Loss for time step t+{i+1}")
+            ax.set_xticks(range(len(quantiles)))
+            ax.set_xticklabels(quantiles)
+            ax.legend()
+        # Save the figure
+        plt.tight_layout()
+        plt.savefig('figures/quantiles/quantiles_loss.png')
+
 
 
