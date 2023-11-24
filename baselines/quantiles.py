@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pytorch_lightning as pl
 import numpy as np
-from tasks.intensity import intensity_dataset, plot_intensity_bias, plot_intensity_distribution
+from tasks.intensity import intensity_dataset
 from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensor
 from data_processing.datasets import load_hursat_b1, load_era5_patches
 from utils.train_test_split import train_val_test_split
@@ -18,7 +18,7 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
-from utils.utils import hours_to_sincos
+from utils.utils import hours_to_sincos, matplotlib_markers
 from utils.loss_functions import MultipleQuantileLoss
 from plotting.quantiles import plot_quantiles_validity
 
@@ -219,13 +219,16 @@ if __name__ == "__main__":
         losses[name] = eval_loss_function(preds, y_true).mean(dim=0).cpu().numpy()
     # Plot the losses in one subplot per time step, as rows
     with sns.axes_style("whitegrid"):
+        # Obtain markers for each model
+        markers = matplotlib_markers(len(models))
+        markers = {name: markers[i] for i, name in enumerate(models.keys())}
         fig, axes = plt.subplots(future_steps, 1, figsize=(12, 8))
         for i in range(future_steps):
             ax = axes[i]
             # Plot the losses for each model
             # The losses have shape (n_time_steps, n_quantiles)
             for name, loss in losses.items():
-                ax.plot(loss[i], label=name)
+                ax.plot(loss[i], label=name, marker=markers[name])
             ax.set_xlabel("Quantile")
             ax.set_ylabel("Loss")
             ax.set_title(f"Loss for time step t+{i+1}")
