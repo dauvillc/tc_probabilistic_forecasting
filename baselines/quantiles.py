@@ -7,7 +7,6 @@ import argparse
 import torch
 import yaml
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pytorch_lightning as pl
 import numpy as np
 from tasks.intensity import intensity_dataset
@@ -18,9 +17,9 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.lightning_callbacks import MetricTracker
-from utils.utils import hours_to_sincos, matplotlib_markers
+from utils.utils import hours_to_sincos
 from utils.loss_functions import MultipleQuantileLoss
-from plotting.quantiles import plot_quantiles_validity
+from plotting.quantiles import plot_quantiles_validity, plot_quantile_losses
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables,
@@ -201,7 +200,7 @@ if __name__ == "__main__":
     ax.legend()
     # Save the figure
     plt.tight_layout()
-    plt.savefig('figures/quantiles/loss.png')
+    plt.savefig('figures/quantiles/loss.svg')
 
     # Retrieve the groundtruth
     any_model_name = list(models.keys())[0]
@@ -213,32 +212,8 @@ if __name__ == "__main__":
         val_preds[name] = torch.cat(trainers[name].predict(model, loaders[name][1]), dim=0).to(torch.float32)
 
     # Compute the loss for each quantile and each model
-    losses = {}
-    eval_loss_function = MultipleQuantileLoss(quantiles=quantiles, reduction="none")
-    for name, preds in val_preds.items():
-        losses[name] = eval_loss_function(preds, y_true).mean(dim=0).cpu().numpy()
-    # Plot the losses in one subplot per time step, as rows
-    with sns.axes_style("whitegrid"):
-        # Obtain markers for each model
-        markers = matplotlib_markers(len(models))
-        markers = {name: markers[i] for i, name in enumerate(models.keys())}
-        fig, axes = plt.subplots(future_steps, 1, figsize=(12, 8))
-        for i in range(future_steps):
-            ax = axes[i]
-            # Plot the losses for each model
-            # The losses have shape (n_time_steps, n_quantiles)
-            for name, loss in losses.items():
-                ax.plot(loss[i], label=name, marker=markers[name])
-            ax.set_xlabel("Quantile")
-            ax.set_ylabel("Loss")
-            ax.set_title(f"Loss for time step t+{i+1}")
-            ax.set_xticks(range(len(quantiles)))
-            ax.set_xticklabels(quantiles)
-            ax.legend()
-        # Save the figure
-        plt.tight_layout()
-        plt.savefig('figures/quantiles/quantiles_loss.png')
+    plot_quantile_losses(val_preds, y_true, quantiles, savepath='figures/quantiles/quantile_losses.svg')
 
     # Plot the validity of the predicted quantiles
-    plot_quantiles_validity(val_preds, y_true, quantiles, savepath='figures/quantiles/validity.png')
+    plot_quantiles_validity(val_preds, y_true, quantiles, savepath='figures/quantiles/validity.svg')
 

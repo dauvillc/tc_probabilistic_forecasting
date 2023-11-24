@@ -189,7 +189,7 @@ if __name__ == "__main__":
     ax.legend()
     # Save the figure
     plt.tight_layout()
-    plt.savefig('figures/baselines/intensity_cnn_losses.png')
+    plt.savefig('figures/baselines/intensity_cnn_losses.svg')
 
     # Retrieve the groundtruth
     any_model_name = list(models.keys())[0]
@@ -201,8 +201,8 @@ if __name__ == "__main__":
         val_preds[name] = torch.cat(trainers[name].predict(model, loaders[name][1]), dim=0).to(torch.float32)
 
     # Plot the bias of the predictions for each model
-    average_bias = plot_intensity_bias(y_true, val_preds, savepath="figures/baselines/intensity_cnn_bias.png")
+    average_bias = plot_intensity_bias(y_true, val_preds, savepath="figures/baselines/intensity_cnn_bias.svg")
     # Plot the distribution of the predictions for each model
-    plot_intensity_distribution(y_true, val_preds, savepath="figures/baselines/intensity_cnn_distributions.png")
+    plot_intensity_distribution(y_true, val_preds, savepath="figures/baselines/intensity_cnn_distributions.svg")
 
 
