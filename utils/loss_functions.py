@@ -64,8 +64,8 @@ class MultipleQuantileLoss(nn.Module):
         # Variable to remember whether this has been called before
         self.called = False
         # Normalization constants: the asymptotic variance of the quantile loss
-        # is q(1-q)x where q is the quantile and x only depends on the data. Therefore,
-        # we can normalize the quantile loss by dividing it by q(1-q).
+        # is proportional to q(1-q). Therefore, dividing the quantile loss by
+        # q(1-q) makes the asymptotic variance of all quantiles equal.
         if normalize:
             normalization_constants = self.quantiles * (1 - self.quantiles)
         # Weights
@@ -86,6 +86,8 @@ class MultipleQuantileLoss(nn.Module):
                 # If no weights are provided and no normalization is applied,
                 # we can just use a tensor of ones.
                 self.weights = torch.ones_like(self.quantiles)
+        # Normalize the weights so that they sum to 1
+        self.weights = self.weights / torch.sum(self.weights)
 
     def __call__(self, y_pred, y_true):
         diff = y_true.unsqueeze(2) - y_pred  # (N, T, Q)
@@ -106,6 +108,10 @@ class MultipleQuantileLoss(nn.Module):
         elif self.reduction == "sum":
             loss = torch.sum(loss)
         return loss
+
+
+def gamma_crps(y_pred, y_true, gamma=1):
+    pass
 
 
 class WeightedLoss(torch.nn.Module):
