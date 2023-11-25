@@ -41,8 +41,7 @@ class VectorProjection3D(nn.Module):
         """
         Parameters
         ----------
-        x : torch tensor of dimensions (N, C, H, W)
-            Input batch of N patches of dimensions (C, H, W).
+        x : torch tensor of dimensions (N, input_len)
 
         Returns
         -------
