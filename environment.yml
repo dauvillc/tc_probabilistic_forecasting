@@ -3,7 +3,6 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - pytorch-cuda
   - pytorch
   - pip
   - xarray
@@ -16,7 +15,6 @@ dependencies:
   - plotly
   - ipywidgets
   - scikit-learn
-  - nodejs
   - torchvision
   - chardet
   - pyyaml
