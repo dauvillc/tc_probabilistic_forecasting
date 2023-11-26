@@ -4,7 +4,6 @@ Implements a single 3D CNN for various tasks.
 import torch
 import torch.nn as nn
 from math import prod
-from models.variables_projection import VectorProjection3D
 
 
 def conv_layer_output_size(input_size, kernel_size, padding=0, stride=1):
@@ -35,11 +34,14 @@ class ConvBlock3D(nn.Module):
         Number of input channels.
     out_channels : int
         Number of output channels.
+    kernel_size : int or tuple of ints, optional
+        Size of the convolutional kernels.
     """
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
-        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, padding=1, stride=2)
+        self.kernel_size = kernel_size
+        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=kernel_size, padding=1)
+        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=kernel_size, padding=1, stride=2)
         self.batchnorm = nn.BatchNorm3d(out_channels)
 
     def forward(self, x):
@@ -58,12 +60,12 @@ class ConvBlock3D(nn.Module):
             Size of the input under the form (D, H, W).
         """
         d, h, w = input_size
-        d = conv_layer_output_size(d, 3, padding=1)
-        h = conv_layer_output_size(h, 3, padding=1)
-        w = conv_layer_output_size(w, 3, padding=1)
-        d = conv_layer_output_size(d, 3, padding=1, stride=2)
-        h = conv_layer_output_size(h, 3, padding=1, stride=2)
-        w = conv_layer_output_size(w, 3, padding=1, stride=2)
+        d = conv_layer_output_size(d, self.kernel_size, padding=1)
+        h = conv_layer_output_size(h, self.kernel_size, padding=1)
+        w = conv_layer_output_size(w, self.kernel_size, padding=1)
+        d = conv_layer_output_size(d, self.kernel_size, padding=1, stride=2)
+        h = conv_layer_output_size(h, self.kernel_size, padding=1, stride=2)
+        w = conv_layer_output_size(w, self.kernel_size, padding=1, stride=2)
         return (d, h, w)
 
 
@@ -77,10 +79,6 @@ class CNN3D(nn.Module):
         Size of the input cubes under the form (D, H, W).
     input_channels : int
         Number of input channels (e.g. reanalysis, satellite, etc.).
-    input_variables: int
-        Number of input variables I (vector containing scalar variables, such
-        as latitude and longitude).
-        Can be zero.
     output_shape: int or tuple of ints
         Shape of the output, not accounting for the batch size.
         If an integer, size of the output vector.
@@ -89,17 +87,13 @@ class CNN3D(nn.Module):
     hidden_channels: int, optional
         Number of hidden channels in the first convolutional layer.
     """
-    def __init__(self, input_size, input_channels, input_variables, output_shape,
+    def __init__(self, input_size, input_channels, output_shape,
                  conv_blocks=4, hidden_channels=4):
         super().__init__()
         d, h, w = input_size
         if isinstance(output_shape, int):
             output_shape = (output_shape,)
         self.output_shape = output_shape
-        # If there are input variables, add a vector projection layer
-        self.input_variables = input_variables
-        if input_variables > 0:
-            self.vector_projection = VectorProjection3D(input_variables, (input_channels, d, h, w))
         # Add a batch normalization layer at the beginning
         self.batchnorm = nn.BatchNorm3d(input_channels)
         # Input convolutional block
@@ -121,30 +115,17 @@ class CNN3D(nn.Module):
         self.fc3 = nn.Linear(64, output_size)
 
 
-    def forward(self, past_images, past_variables=None):
+    def forward(self, x):
         """
         Parameters
         ----------
-        past_images : torch tensor of dimensions (N, C, D, H, W)
-            Input batch. 
-        past_variables: torch vector of shape (N, I), optional.
-            Input batch of scalar variables.
+        x: torch tensor of dimensions (N, C, D, H, W)
+            Input batch.
         Returns
         -------
         torch tensor of dimensions (N, output_size)
             Output batch of N intensity predictions.
         """
-        # If there are input variables, project them to a tensor of shape
-        # (C, D, H, W)
-        if past_variables is not None:
-            if self.input_variables != past_variables.shape[1]:
-                raise ValueError(f"Expected {self.input_variables} input variables, "
-                                 f"got {past_variables.shape[1]}")
-            projection = self.vector_projection(past_variables)
-            # Sum the input images and the input variables if there are any
-            x = past_images + projection
-        else:
-            x = past_images
         # Apply batch normalization to the input
         x = self.batchnorm(x)
         # Apply the input convolutional block
