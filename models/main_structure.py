@@ -25,14 +25,19 @@ class StormPredictionModel(pl.LightningModule):
         and return a tensor of shape (N, C', D, H, W).
     loss_function : callable, optional
         The loss function to use. If None, the mean squared error is used.
+    metrics: Mapping of str to callable, optional
+        The metrics to track. The keys are the names of the metrics, and the values
+        are functions that take as input the output of the model and the target,
+        and return a scalar.
     """
-    def __init__(self, prediction_model, projection_model, loss_function=None):
+    def __init__(self, prediction_model, projection_model, loss_function=None, metrics=None):
         super().__init__()
         self.prediction_model = prediction_model
         self.projection_model = projection_model
         self.loss_function = loss_function
         if loss_function is None:
             self.loss_function = torch.nn.MSELoss(reduction="mean")
+        self.metrics = metrics if metrics is not None else {}
 
     def training_step(self, batch, batch_idx):
         """
@@ -44,6 +49,10 @@ class StormPredictionModel(pl.LightningModule):
         loss = self.loss_function(prediction, target_variables)
         # Log the loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        # Compute the metrics
+        for name, metric in self.metrics.items():
+            self.log("train_" + name, metric(prediction, target_variables),
+                     on_step=False, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -56,6 +65,10 @@ class StormPredictionModel(pl.LightningModule):
         loss = self.loss_function(prediction, target_variables)
         # Log the loss
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        # Compute the metrics
+        for name, metric in self.metrics.items():
+            self.log("val_" + name, metric(prediction, target_variables),
+                     on_step=False, on_epoch=True)
         return loss
 
     def predict_step(self, batch, batch_idx):
@@ -80,8 +93,8 @@ class StormPredictionModel(pl.LightningModule):
         """
         Configures the optimizer.
         """
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        optimizer = torch.optim.Adam(self.parameters(), lr=5e-4)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": lr_scheduler,

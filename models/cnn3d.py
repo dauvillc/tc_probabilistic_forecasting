@@ -97,7 +97,7 @@ class CNN3D(nn.Module):
         # Add a batch normalization layer at the beginning
         self.batchnorm = nn.BatchNorm3d(input_channels)
         # Input convolutional block
-        c = hidden_channels
+        c = max(hidden_channels, input_channels)
         self.input_conv = nn.Conv3d(input_channels, c, kernel_size=3, padding=1) # DxHxW -> DxHxW
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])

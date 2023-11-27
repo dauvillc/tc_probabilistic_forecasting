@@ -54,10 +54,19 @@ class MultipleQuantileLoss(nn.Module):
         By default, no weights are applied.
     reduction: str, optional
         Either "none" (default), "mean" or "sum".
+    min_quantile: float, optional
+        If not None, only quantiles greater than or equal to this value
+        will be considered.
     """
-    def __init__(self, quantiles, normalize=True, weights=None, reduction="none"):
+    def __init__(self, quantiles, normalize=True, weights=None, reduction="none",
+                 min_quantile=None):
         super().__init__()
         self.quantiles = torch.tensor(quantiles)
+        self.min_quantile = min_quantile
+        if min_quantile is not None:
+            # Remove the quantiles that are less than min_quantile
+            self.quantile_indices = torch.where(self.quantiles >= min_quantile)[0]
+            self.quantiles = self.quantiles[self.quantile_indices]
         # The term (y_true - y_pred) will have shape (N, T, Q).
         self.quantiles = self.quantiles.unsqueeze(0)  # (1, Q)
         self.reduction = reduction
@@ -89,7 +98,15 @@ class MultipleQuantileLoss(nn.Module):
         # Normalize the weights so that they sum to 1
         self.weights = self.weights / torch.sum(self.weights)
 
-    def __call__(self, y_pred, y_true):
+    def __call__(self, y_pred, y_true): 
+        # y_pred has shape (N, T, Q) where N is the batch size,
+        # T is the number of time steps, and Q is the number of quantiles predicted.
+        # However, the model predicts all quantiles and not just the ones we want.
+        # Therefore, we need to select the quantiles we are interested in.
+        if self.min_quantile is not None:
+            # Remove the quantiles that are less than min_quantile
+            y_pred = y_pred[:, :, self.quantile_indices]
+        # Compute the quantile loss
         diff = y_true.unsqueeze(2) - y_pred  # (N, T, Q)
         # First call: adjust the shape of the quantiles and 
         # transfer the tensors to the same device as the inputs
