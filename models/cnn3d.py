@@ -94,8 +94,6 @@ class CNN3D(nn.Module):
         if isinstance(output_shape, int):
             output_shape = (output_shape,)
         self.output_shape = output_shape
-        # Add a batch normalization layer at the beginning
-        self.batchnorm = nn.BatchNorm3d(input_channels)
         # Input convolutional block
         c = max(hidden_channels, input_channels)
         self.input_conv = nn.Conv3d(input_channels, c, kernel_size=3, padding=1) # DxHxW -> DxHxW
@@ -126,8 +124,6 @@ class CNN3D(nn.Module):
         torch tensor of dimensions (N, output_size)
             Output batch of N intensity predictions.
         """
-        # Apply batch normalization to the input
-        x = self.batchnorm(x)
         # Apply the input convolutional block
         x = torch.selu(self.input_conv(x))
         # Apply the successive convolutional blocks

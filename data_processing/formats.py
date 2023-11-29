@@ -78,10 +78,17 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
     yield_input_variables: bool, optional
         If True (default), yields the past variables alongside the past datacube. If False,
         returns None, input_datacube, target_variables.
+    normalise_inputs: bool, optional
+        If True, normalises the inputs (datacube and past variable). The default is True.
+        The datacube is normalised channel-wise.
+    normalise_from: SuccessiveStepsDataset, optional
+        If not None, normalises the inputs using the mean and standard deviation of the
+        datacube and past variables of the given dataset. The default is None.
     """
     def __init__(self, trajectories, datacube, past_steps, future_steps,
                  input_variables=None, target_variables=None,
-                 target_to_tensor=True, yield_input_variables=True):
+                 target_to_tensor=True, yield_input_variables=True,
+                 normalise_inputs=True, normalise_from=None):
         # Reset the index of the trajectories to make sure it matches that of
         # the datacube, and assert they have the same length.
         trajectories = trajectories.reset_index(drop=True)
@@ -92,6 +99,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.future_steps = future_steps
         self.target_to_tensor = target_to_tensor
         self.yield_input_variables = yield_input_variables
+        self.normalise_inputs = normalise_inputs
 
         # Assert there are no missing values in the trajectories
         assert not trajectories.isna().any().any(), "There are missing values in the trajectories."
@@ -100,6 +108,28 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.variables = [col for col in trajectories.columns if col not in ['SID', 'ISO_TIME']]
         self.input_variables = self.variables if input_variables is None else input_variables
         self.target_variables = self.variables if target_variables is None else target_variables
+
+        # If normalise_inputs is True, normalise the datacube and the past variables
+        if normalise_inputs:
+            if normalise_from is None:
+                # Compute the mean and standard deviation of each channel of the datacube,
+                # which has shape (sid_time, height, width, channels)
+                self.input_datacube_mean = self.datacube.mean(dim=(0, 1, 2))
+                self.input_datacube_std = self.datacube.std(dim=(0, 1, 2))
+                # Compute the mean and standard deviation of each input variable
+                self.input_variables_mean = trajectories[self.input_variables].mean()
+                self.input_variables_std = trajectories[self.input_variables].std()
+            else:
+                # Use the mean and standard deviation of the given dataset
+                self.input_datacube_mean = normalise_from.input_datacube_mean
+                self.input_datacube_std = normalise_from.input_datacube_std
+                self.input_variables_mean = normalise_from.input_variables_mean
+                self.input_variables_std = normalise_from.input_variables_std
+            # Normalise the datacube
+            self.datacube = (self.datacube - self.input_datacube_mean) / self.input_datacube_std
+            # Normalise the input variables
+            trajectories[self.input_variables] -= self.input_variables_mean
+            trajectories[self.input_variables] /= self.input_variables_std
 
         # Create an empty dataframe to store the past trajectories
         past_trajs = pd.DataFrame({'SID': trajectories['SID'], 'ISO_TIME': trajectories['ISO_TIME']})
@@ -140,6 +170,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         if target_to_tensor:
             self.past_target = torch.tensor(self.past_target.to_numpy(), dtype=torch.float32)
             self.future_target = torch.tensor(self.future_target.to_numpy(), dtype=torch.float32)
+
 
     def __len__(self):
         return len(self.target)

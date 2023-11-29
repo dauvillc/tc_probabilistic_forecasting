@@ -21,8 +21,6 @@ class VectorProjection3D(nn.Module):
         self.input_len = input_len
         self.output_shape = output_shape
         c, d, h, w = output_shape
-        # Input batch normalization
-        self.input_batchnorm = nn.BatchNorm1d(input_len)
         # Linear layer to project to a vector of length 1 * H * W
         self.linear = nn.Linear(input_len, h * w)
         # Reshape the output to (1, H, W) and apply batch normalization
@@ -49,8 +47,6 @@ class VectorProjection3D(nn.Module):
             Output batch of N patches of dimensions (C, D, H, W).
         """
         c, d, h, w = self.output_shape
-        # Apply batch normalization to the input
-        x = self.input_batchnorm(x)
         # Project to a vector of length H * W
         x = torch.selu(self.linear(x))
         # Reshape to (N, 1, H, W) and apply batch normalization
