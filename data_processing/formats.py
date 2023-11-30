@@ -194,3 +194,15 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             return past_traj, past_data, future_traj
         else:
             return None, past_data, future_traj
+
+    def patch_size(self):
+        """
+        Returns the size of the datacube patches.
+        """
+        return self.datacube.shape[2:]
+    
+    def datacube_channels(self):
+        """
+        Returns the number of channels in the datacube.
+        """
+        return self.datacube.shape[1]

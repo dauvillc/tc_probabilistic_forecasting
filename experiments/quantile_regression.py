@@ -4,20 +4,14 @@ Uses a CNN with the Multiple Quantile Loss.
 import sys
 sys.path.append("./")
 import argparse
-import torch
-import yaml
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from tasks.intensity import intensity_dataset
-from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensor
-from data_processing.datasets import load_hursat_b1, load_era5_patches
-from utils.train_test_split import train_val_test_split
+from data_processing.assemble_experiment_dataset import load_dataset
 from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
-from utils.utils import hours_to_sincos
 from utils.loss_functions import MultipleQuantileLoss
 
 
@@ -82,6 +76,8 @@ if __name__ == "__main__":
                         help="Number of convolutional blocks.")
     parser.add_argument("--epochs", type=int, default=100,
                         help="Number of epochs to train the model for.")
+    parser.add_argument("--batch_size", type=int, default=128,
+                        help="Batch size.")
     parser.add_argument("--input_data", type=str, default="era5+hursat",
                         help="The input data to use. Can be 'era5', 'hursat' or 'era5+hursat'.")
     args = parser.parse_args()
@@ -89,9 +85,9 @@ if __name__ == "__main__":
     epochs = args.epochs
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
-    # Load the configuration file
-    with open("config.yml", "r") as f:
-        config = yaml.safe_load(f)
+
+    # ====== DATA LOADING ====== #
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(args, input_variables, output_variables)
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
@@ -99,85 +95,8 @@ if __name__ == "__main__":
     # Log the hyperparameters
     wandb_logger.log_hyperparams(args)
 
-    # ====== DATA LOADING ====== #
-    # Load the trajectory forecasting dataset
-    all_trajs = intensity_dataset()
-    # Add a column with the sin/cos encoding of the hours, which will be used as input
-    # to the model
-    sincos_hours = hours_to_sincos(all_trajs['ISO_TIME'])
-    all_trajs['HOUR_SIN'], all_trajs['HOUR_COS'] = sincos_hours[:, 0], sincos_hours[:, 1] 
-
-    # Load the HURSAT-B1 data associated to the dataset
-    # We need to load the hursat data even if we don't use it, because we need to
-    # keep only the storms for which we have HURSAT-B1 data to fairly compare the
-    # runs.
-    found_storms, hursat_data = load_hursat_b1(all_trajs, use_cache=True, verbose=True)
-    # Keep only the storms for which we have HURSAT-B1 data
-    all_trajs = all_trajs.merge(found_storms, on=['SID', 'ISO_TIME'])
-    # Load the right patches depending on the input data
-    if args.input_data == "era5":
-        # Load the ERA5 patches associated to the dataset
-        atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
-        full_patches = datacube_to_tensor(surface_patches)
-    elif args.input_data == "hursat":
-        full_patches = datacube_to_tensor(hursat_data)
-    elif args.input_data == "era5+hursat":
-        # Load the ERA5 patches associated to the dataset
-        atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
-        era5_patches = datacube_to_tensor(surface_patches)
-        hursat_patches = datacube_to_tensor(hursat_data)
-        # Concatenate the patches along the channel dimension
-        full_patches = torch.cat([era5_patches, hursat_patches], dim=1)
-    else:
-        raise ValueError("The input data must be 'era5', 'hursat' or 'era5+hursat'.")
-
-
-    # ====== TRAIN/VAL/TEST SPLIT ====== #
-    # Split the dataset into train, validation and test sets
-    train_index, val_index, test_index = train_val_test_split(all_trajs,
-                                                              train_size=0.6,
-                                                              val_size=0.2,
-                                                              test_size=0.2)
-    train_trajs = all_trajs.iloc[train_index]
-    val_trajs = all_trajs.iloc[val_index]
-    test_trajs = all_trajs.iloc[test_index]
-
-    print(f"Number of trajectories in the training set: {len(train_trajs)}")
-    print(f"Number of trajectories in the validation set: {len(val_trajs)}")
-    print(f"Number of trajectories in the test set: {len(test_trajs)}")
-
-    # ====== DATASET CREATION ====== #
-
-    def create_dataloaders(patches, batch_size=128):
-        """
-        Creates the train and validation dataloaders for the given patches.
-        """
-        # Split the patches into train, validation and test sets
-        train_patches = patches[train_index]
-        val_patches = patches[val_index]
-
-        # Create the train and validation datasets. For the validation dataset,
-        # we need to normalise the data using the statistics from the train dataset.
-        yield_input_variables = len(input_variables) > 0
-        train_dataset = SuccessiveStepsDataset(train_trajs, train_patches, past_steps, future_steps,
-                                               input_variables, output_variables,
-                                               yield_input_variables=yield_input_variables)
-        val_dataset = SuccessiveStepsDataset(val_trajs, val_patches, past_steps, future_steps,
-                                             input_variables, output_variables,
-                                             yield_input_variables=yield_input_variables,
-                                             normalise_from=train_dataset)
-        # Create the train and validation data loaders
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        return train_loader, val_loader
-
-    # Instantiate the train and validation data loader
-    batch_size = 128
-    train_loader, val_loader = create_dataloaders(full_patches, batch_size=batch_size)
-
     # ====== MODELS CREATION ====== #
     # Create the loss function
-    all_intensities = all_trajs['INTENSITY'].values
     loss_function = MultipleQuantileLoss(quantiles=quantiles, reduction="mean")
     # Additional metrics to track:
     metrics = {}
@@ -188,9 +107,9 @@ if __name__ == "__main__":
         metrics[f"MQL_{q}"] = MultipleQuantileLoss(quantiles, reduction="mean", min_quantile=q)
 
     # Initialize the model
-    patch_size = full_patches.shape[-2:]
+    patch_size = train_dataset.patch_size()
     datacube_size = (past_steps,) + patch_size
-    channels = full_patches.shape[1]
+    channels = train_dataset.datacube_channels()
     # The number of scalar variables the model receives is the number of variables
     # (e.g. 2 for lat/lon) times the number of past steps
     num_input_variables = len(input_variables) * past_steps
