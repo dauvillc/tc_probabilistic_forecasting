@@ -13,6 +13,8 @@ def to_numpy(tensor):
     if isinstance(tensor, np.ndarray):
         return tensor
     elif isinstance(tensor, torch.Tensor):
+        if tensor.dtype == torch.bfloat16:
+            tensor = tensor.type(torch.float32)
         return tensor.numpy(force=True)
     else:
         return np.array(tensor)

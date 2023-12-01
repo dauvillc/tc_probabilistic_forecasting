@@ -58,7 +58,7 @@ class MultipleQuantileLoss(nn.Module):
         If not None, only quantiles greater than or equal to this value
         will be considered.
     """
-    def __init__(self, quantiles, normalize=True, weights=None, reduction="none",
+    def __init__(self, quantiles, normalize=False, weights=None, reduction="none",
                  min_quantile=None):
         super().__init__()
         self.quantiles = torch.tensor(quantiles)

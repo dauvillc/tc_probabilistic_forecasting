@@ -13,6 +13,7 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from utils.loss_functions import MultipleQuantileLoss
+from utils.metrics import QuantilesCRPS
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables,
@@ -91,7 +92,7 @@ if __name__ == "__main__":
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
-    wandb_logger = WandbLogger(project="tc_prediction", name=args.name)
+    wandb_logger = WandbLogger(project="tc_prediction", name=args.name, log_model="all")
     # Log the hyperparameters
     wandb_logger.log_hyperparams(args)
 
@@ -105,6 +106,8 @@ if __name__ == "__main__":
     min_quantiles = [0.5, 0.75, 0.9, 0.95]
     for q in min_quantiles:
         metrics[f"MQL_{q}"] = MultipleQuantileLoss(quantiles, reduction="mean", min_quantile=q)
+    # We'll also track the CRPS, and consider the min wind speed to be 0 and the max to be 100 m/s
+    metrics["CRPS"] = QuantilesCRPS(quantiles, 0, 100)
 
     # Initialize the model
     patch_size = train_dataset.patch_size()
