@@ -1,5 +1,6 @@
 """
-Evaluates the models.
+Evaluates a model taken from a W&B run. All plots are uploaded to W&B and
+saved locally.
 """
 import sys
 sys.path.append("./")
@@ -14,40 +15,45 @@ from experiments.quantile_regression import create_model
 from utils.utils import to_numpy
 from utils.metrics import QuantilesCRPS
 from plotting.quantiles import plot_quantile_losses
+from plotting.distributions import plot_data_distribution
 
 
 if __name__ == "__main__":
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
-    quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99])
     # Argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, required=True,
-                        help="The name of the experiment.")
-    parser.add_argument("-p", "--past_steps", type=int, default=4,
-                        help="Number of time steps given as input to the model. Must be >= 3.")
-    parser.add_argument("-n", "--prediction_steps", type=int, default=4,
-                        help="Number of time steps to predict.")
-    parser.add_argument("--hidden_channels", type=int, default=4,
-                        help="Number of channels in the first convolutional layer.")
-    parser.add_argument("--depth" , type=int, default=5,
-                        help="Number of convolutional blocks.")
-    parser.add_argument("--epochs", type=int, default=100,
-                        help="Number of epochs to train the model for.")
-    parser.add_argument("--batch_size", type=int, default=128,
-                        help="Batch size.")
-    parser.add_argument("--input_data", type=str, default="era5+hursat",
-                        help="The input data to use. Can be 'era5', 'hursat' or 'era5+hursat'.")
-    parser.add_argument('-r', '--ref', type=str, required=True,
-                        help="The checkpoint reference to a W&B run.")
+                        help="The name of the experiment to evaluate.")
     args = parser.parse_args()
-    past_steps, future_steps = args.past_steps, args.prediction_steps
-    epochs = args.epochs
-    if past_steps < 3:
-        raise ValueError("The number of past steps must be >= 3.")
+
+    # ====== WANDB INITIALIZATION ====== #
+    # Initialize the W+B logger and retrieve the run that led to the model being
+    # evaluated
+    run = wandb.init(project="tc_prediction", name="eval_" + args.name, job_type="eval")
+    api = wandb.Api()
+    # Search for all runs with the same name
+    runs = api.runs("arches/tc_prediction", filters={"config.name": args.name})
+    if len(runs) == 0:
+        raise ValueError(f"No runs with name {args.name} were found.")
+    # If several runs have the same name, we'll use any but print a warning
+    if len(runs) > 1:
+        print(f"WARNING: Several runs with name {args.name} were found. Using the first one.")
+    # Get the run id
+    evaluated_run = runs[0]
+    run_id = evaluated_run.id
+    # We can now retrieve the config of the run
+    for key, value in evaluated_run.config.items():
+        if key not in args:
+            vars(args)[key] = value
+    quantiles = args.quantiles
+    past_steps, future_steps = args.past_steps, args.future_steps
 
     # ====== DATA LOADING ====== #
+    # Retrieve the input type from the run config
+    input_data = evaluated_run.config["input_data"]
+    args.input_data = input_data
     train_dataset, val_dataset, train_loader, val_loader = load_dataset(args, input_variables, output_variables)
 
     # ====== MODEL RECONSTRUCTION ====== #
@@ -63,10 +69,8 @@ if __name__ == "__main__":
     prediction_model = model.prediction_model
     projection_model = model.projection_model
     
-    # Load the model weights
-    checkpoint_ref = args.ref
-    run = wandb.init(project="tc_prediction", name=args.name, job_type="eval")
-    artifact = run.use_artifact(checkpoint_ref, type="model")
+    # Load the weights from the best checkpoint
+    artifact = run.use_artifact("model-" + run_id + ":best", type="model")
     artifact_dir = artifact.download()
 
     # load checkpoint
@@ -82,6 +86,14 @@ if __name__ == "__main__":
     trainer = pl.Trainer(accelerator="gpu", max_epochs=1)
     pred = np.concatenate([to_numpy(p) for p in trainer.predict(model, val_loader)], axis=0)
 
+    # Create a directory in the figures folder specific to this experiment
+    figpath = Path(f"figures/{args.name}")
+    figpath.mkdir(exist_ok=True)
+
+    # Plot the distribution of the true values
+    fig = plot_data_distribution(y_true, quantiles=quantiles, savepath=f"{figpath}/true_distribution.svg")
+    wandb.log({"true_distribution": wandb.Image(fig)})
+
     # Compute the CRPS
     crps_computer = QuantilesCRPS(quantiles, 0, 100)
     crps = crps_computer(pred, y_true)
@@ -90,6 +102,6 @@ if __name__ == "__main__":
 
     # Plot the quantile losses and log them to wandb
     fig = plot_quantile_losses({"model": pred}, y_true, quantiles,
-                                savepath=f"figures/quantiles/{args.name}_quantile_losses.svg")
+                                savepath=f"{figpath}/quantile_losses.svg")
     wandb.log({"quantile_losses": wandb.Image(fig)})
 

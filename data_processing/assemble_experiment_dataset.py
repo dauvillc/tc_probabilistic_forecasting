@@ -31,7 +31,7 @@ def load_dataset(args, input_variables, output_variables):
     train_loader : torch.utils.data.DataLoader
     val_loader : torch.utils.data.DataLoader
     """
-    past_steps, future_steps = args.past_steps, args.prediction_steps
+    past_steps, future_steps = args.past_steps, args.future_steps
     # Load the trajectory forecasting dataset
     all_trajs = intensity_dataset()
     # Add a column with the sin/cos encoding of the hours, which will be used as input

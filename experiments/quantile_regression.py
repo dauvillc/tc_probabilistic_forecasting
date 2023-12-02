@@ -62,14 +62,14 @@ if __name__ == "__main__":
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
-    quantiles = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99])
+    quantiles = np.arange(0.05, 1, 0.05) 
     # Argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, required=True,
                         help="The name of the experiment.")
     parser.add_argument("-p", "--past_steps", type=int, default=4,
                         help="Number of time steps given as input to the model. Must be >= 3.")
-    parser.add_argument("-n", "--prediction_steps", type=int, default=4,
+    parser.add_argument("-n", "--future_steps", type=int, default=4,
                         help="Number of time steps to predict.")
     parser.add_argument("--hidden_channels", type=int, default=4,
                         help="Number of channels in the first convolutional layer.")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_data", type=str, default="era5+hursat",
                         help="The input data to use. Can be 'era5', 'hursat' or 'era5+hursat'.")
     args = parser.parse_args()
-    past_steps, future_steps = args.past_steps, args.prediction_steps
+    past_steps, future_steps = args.past_steps, args.future_steps
     epochs = args.epochs
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
@@ -95,6 +95,9 @@ if __name__ == "__main__":
     wandb_logger = WandbLogger(project="tc_prediction", name=args.name, log_model="all")
     # Log the hyperparameters
     wandb_logger.log_hyperparams(args)
+    wandb_logger.log_hyperparams({"input_variables": input_variables,
+                                    "output_variables": output_variables,
+                                    "quantiles": quantiles})
 
     # ====== MODELS CREATION ====== #
     # Create the loss function
