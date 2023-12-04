@@ -6,7 +6,7 @@ Implements functions to help with train / val / test splitting.
 from sklearn.model_selection import train_test_split
 
 
-def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0.2, random_state=900):
+def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0.2, random_state=42):
     """
     Splits the IBTrACS dataset into train, validation and test sets.
     The returned splits contain different storms and thus disjoint tracks.
@@ -24,6 +24,7 @@ def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0
     test_size : float, optional.
         Size of the test set. The default is 0.2.
     random_state : int, optional.
+        If None, the random state is still set to a default value for reproducibility.
 
     Returns
     -------
