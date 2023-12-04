@@ -98,7 +98,11 @@ if __name__ == "__main__":
     wandb.log({"true_distribution": wandb.Image(fig)})
 
     # Compute the CRPS
-    crps_computer = QuantilesCRPS(quantiles, 0, 100)
+    # For that, we need the maximum of the wind speed distribution
+    # taken from the training dataset (we'll consider the min to be 0)
+    _, max_wind_speed = train_dataset.target_support("INTENSITY")
+    # As the max in the validation dataset might be higher, we'll apply some margin
+    crps_computer = QuantilesCRPS(quantiles, 0, max_wind_speed * 1.1)
     crps = crps_computer(pred, y_true)
     print("Average CRPS:", crps)
     wandb.log({"avg_crps": crps})
@@ -111,7 +115,7 @@ if __name__ == "__main__":
     # Compute the MAE between the true value and the prediction of the model at different points
     # in the CDF
     thresholds = np.linspace(0, 1, 31)
-    inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
+    inverse_CDF = Quantiles_inverse_eCDF(quantiles, 0, max_wind_speed * 1.1)
     maes = mae_per_threshold(y_true, pred, inverse_CDF, thresholds,
                              y_true_quantiles=[0.5, 0.75, 0.9, 0.95])
     # Plot the MAE per threshold
