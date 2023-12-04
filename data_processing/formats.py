@@ -195,6 +195,13 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         else:
             return None, past_data, future_traj
 
+    def target_support(self, variable):
+        """
+        Returns the support of the distribution of a variable in the target,
+        as a tuple (min, max).
+        """
+        return self.trajectories[variable].min(), self.trajectories[variable].max()
+
     def patch_size(self):
         """
         Returns the size of the datacube patches.
@@ -206,3 +213,4 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         Returns the number of channels in the datacube.
         """
         return self.datacube.shape[1]
+

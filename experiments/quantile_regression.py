@@ -114,8 +114,11 @@ if __name__ == "__main__":
     min_quantiles = [0.5, 0.75, 0.9, 0.95]
     for q in min_quantiles:
         metrics[f"CQL_{q}"] = MultipleQuantileLoss(quantiles, reduction="mean", min_quantile=q)
-    # We'll also track the CRPS, and consider the min wind speed to be 0 and the max to be 100 m/s
-    metrics["CRPS"] = QuantilesCRPS(quantiles, 0, 100)
+    # We'll also track the CRPS. For that, we need the maximum of the wind speed distribution
+    # taken from the training dataset (we'll consider the min to be 0)
+    _, max_wind_speed = train_dataset.target_support("INTENSITY")
+    # As the max in the validation dataset might be higher, we'll apply some margin
+    metrics["CRPS"] = QuantilesCRPS(quantiles, 0, max_wind_speed * 1.1)
 
     # Initialize the model
     patch_size = train_dataset.patch_size()
