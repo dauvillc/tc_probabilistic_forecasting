@@ -2,6 +2,7 @@
 Implements functions to plot the results of the multiple quantile loss
 regression.
 """
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from utils.utils import matplotlib_markers
@@ -52,7 +53,7 @@ def plot_quantile_losses(y_pred, y_true, quantiles, savepath=None):
             ax.set_title(f"Loss for time step t+{i+1}")
             ax.set_xticks(range(len(quantiles)))
             # Write the quantiles as labels, rounded to 2 decimals and rotated
-            ax.set_xticklabels(quantiles.round(2), rotation=45)
+            ax.set_xticklabels(np.array(quantiles).round(2), rotation=45)
             ax.legend()
         # Save the figure
         plt.tight_layout()

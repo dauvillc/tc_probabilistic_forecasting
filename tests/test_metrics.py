@@ -20,9 +20,16 @@ if __name__ == "__main__":
     # Create the inverse empirical CDF function
     inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
     # Compute the MAE per threshold
-    thresholds = np.array([0, 0.25, 0.5, 0.75, 100])
+    thresholds = np.array([0, 0.25, 0.5, 0.75, 1])
     mae = mae_per_threshold(y_true, predicted_quantiles, inverse_CDF, thresholds)
     print("Quantile regression:")
     print(mae)
-    # Expected output:  [30. 30. 0. 0. 70.] (70 as the CDF is 1 only for values >= 100)
+    # Expected output:
+    # Quantile regression:
+    #    threshold  MAE
+    # 0       0.00  30.0
+    # 1       0.25  30.0
+    # 2       0.50   0.0
+    # 3       0.75   0.0
+    # 4       1.00  70.0
 

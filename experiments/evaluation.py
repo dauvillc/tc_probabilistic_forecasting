@@ -17,9 +17,11 @@ from metrics.quantiles import QuantilesCRPS, Quantiles_inverse_eCDF
 from metrics.probabilistic import mae_per_threshold
 from plotting.quantiles import plot_quantile_losses
 from plotting.distributions import plot_data_distribution
+from plotting.probabilistic import plot_mae_per_threshold
 
 
 if __name__ == "__main__":
+    pl.seed_everything(42)
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
@@ -106,14 +108,17 @@ if __name__ == "__main__":
                                 savepath=f"{figpath}/quantile_losses.svg")
     wandb.log({"quantile_losses": wandb.Image(fig)})
 
-    # Compute the MAE between the true value and the prediction of the model at a given
-    # point of the CDF
-    thresholds = np.linspace(0, 1, 11)
+    # Compute the MAE between the true value and the prediction of the model at different points
+    # in the CDF
+    thresholds = np.linspace(0, 1, 31)
     inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
-    maes = mae_per_threshold(y_true, pred, inverse_CDF, thresholds)
-    print("MAE per threshold:")
-    print(maes)
+    maes = mae_per_threshold(y_true, pred, inverse_CDF, thresholds,
+                             y_true_quantiles=[0.5, 0.75, 0.9, 0.95])
+    # Plot the MAE per threshold
+    fig = plot_mae_per_threshold(maes, y_true_quantiles=[0.5, 0.75, 0.9, 0.95],
+                                 save_path=f"{figpath}/mae_per_threshold.svg")
+    wandb.log({"mae_per_threshold_plot": wandb.Image(fig)})
     # Log the thresholds and the MAEs to a W&B table
-    table = wandb.Table(columns=["threshold", "MAE"], data=[[t, m] for t, m in zip(thresholds, maes)])
-    wandb.log({"mae_per_threshold": table})
+    maes_table = wandb.Table(dataframe=maes)
+    wandb.log({"mae_per_threshold": maes_table})
 
