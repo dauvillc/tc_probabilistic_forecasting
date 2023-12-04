@@ -12,8 +12,8 @@ from data_processing.assemble_experiment_dataset import load_dataset
 from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
-from utils.loss_functions import MultipleQuantileLoss
-from utils.metrics import QuantilesCRPS
+from metrics.loss_functions import MultipleQuantileLoss
+from metrics.quantiles import QuantilesCRPS
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables,

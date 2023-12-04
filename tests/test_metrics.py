@@ -3,34 +3,26 @@ Tests the data loading and evaluation functions.
 """
 import sys
 sys.path.append("./")
-import argparse
-import yaml
 import numpy as np
-from tasks.intensity import intensity_dataset, plot_intensity_bias
+from metrics.probabilistic import mae_per_threshold
+from metrics.quantiles import Quantiles_inverse_eCDF
 
 
 if __name__ == "__main__":
-    # Argument parser
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--prediction_steps", type=int, default=1,
-                        help="Number of time steps to predict.")
-    args = parser.parse_args()
-    predicted_steps = args.prediction_steps
-    # Load the configuration file
-    with open("config.yml", "r") as f:
-        config = yaml.safe_load(f)
+    # Create a fake dataset with 1 sample and 1 time steps 
+    y_true = np.array([[30]])
 
-    # Load the trajectory forecasting dataset
-    all_trajs = intensity_dataset()
+    # Quantile regression
+    # -------------------
+    quantiles = np.array([0.5])
+    # Create a fake set of predicted quantiles for each time step 
+    predicted_quantiles = np.array([[[30]]])
+    # Create the inverse empirical CDF function
+    inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
+    # Compute the MAE per threshold
+    thresholds = np.array([0, 0.25, 0.5, 0.75, 100])
+    mae = mae_per_threshold(y_true, predicted_quantiles, inverse_CDF, thresholds)
+    print("Quantile regression:")
+    print(mae)
+    # Expected output:  [30. 30. 0. 0. 70.] (70 as the CDF is 1 only for values >= 100)
 
-    # Create a fake ground truth, in which the intensity is constant over all
-    # time steps, and its value is taken from all_trajs
-    y_true = np.tile(all_trajs['INTENSITY'].values, (predicted_steps, 1)).T
-    # Simulate a model that predicts the same intensity for all time steps, plus
-    # Gaussian noise whose variance increases at each time step.
-    y_pred = y_true.copy()
-    for i in range(predicted_steps):
-        y_pred[:, i] += np.random.normal(loc=i*0.2, scale=i + 1, size=y_pred.shape[0])
-
-    # Plot the bias
-    plot_intensity_bias(y_true, y_pred, savepath="figures/tests/intensity_bias.png")

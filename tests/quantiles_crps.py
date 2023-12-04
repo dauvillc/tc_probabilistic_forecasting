@@ -4,7 +4,7 @@ Tests the implementation of the quantile CRPS.
 import sys
 sys.path.append("./")
 import numpy as np
-from utils.metrics import QuantilesCRPS
+from metrics.metrics import QuantilesCRPS
 
 
 if __name__ == "__main__":

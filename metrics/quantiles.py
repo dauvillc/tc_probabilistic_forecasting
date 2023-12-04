@@ -1,5 +1,6 @@
 """
-Implements various metrics.
+Implements various functions to evaluate the quality of a set of
+predicted quantiles.
 """
 import numpy as np
 from utils.utils import to_numpy
@@ -52,6 +53,54 @@ class Quantiles_eCDF:
         index = np.searchsorted(predicted_quantiles, y, side='right') - 1
         # Return the empirical CDF at y as the corresponding quantile
         return self.quantiles[index]
+
+
+class Quantiles_inverse_eCDF:
+    """
+    Given a set of predicted quantiles, computes the inverse of the
+    empirical CDF at any point u.
+
+    Parameters
+    ----------
+    quantiles: array-like or torch.Tensor
+        The quantiles that define the empirical CDF, between 0 and 1.
+    min_val: float
+        Minimum value of the empirical CDF (beginning of the support).
+    max_val: float
+        Maximum value of the empirical CDF (end of the support).
+    """
+    def __init__(self, quantiles, min_val, max_val):
+        self.quantiles = to_numpy(quantiles)
+        self.min_val = min_val
+        self.max_val = max_val
+        # Add 0 and 1 to the quantiles for generality
+        self.quantiles = np.concatenate(([0], self.quantiles, [1]))
+
+    def __call__(self, predicted_quantiles, u):
+        """
+        Returns the inverse of the empirical CDF at a given probability u.
+
+        Parameters
+        ----------
+        predicted_quantiles: array-like or torch.Tensor
+            The predicted quantiles.
+        u: array-like or torch.Tensor
+            The probability at which the inverse empirical CDF is evaluated.
+        
+        Returns
+        -------
+        The inverse empirical CDF at u, as a ndarray.
+        """
+        predicted_quantiles = to_numpy(predicted_quantiles)
+        u = to_numpy(u)
+        # Add the minimum and maximum values to the predicted quantiles
+        # for generality
+        predicted_quantiles = np.concatenate(([self.min_val], predicted_quantiles, [self.max_val]))
+        # Find the index of the predicted quantile that is just below u
+        # (or equal to u)
+        index = np.searchsorted(self.quantiles, u, side='right') - 1
+        # Return the inverse empirical CDF at u as the corresponding quantile
+        return predicted_quantiles[index]
 
 
 class QuantilesCRPS:

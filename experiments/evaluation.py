@@ -13,7 +13,8 @@ from models.main_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
 from experiments.quantile_regression import create_model
 from utils.utils import to_numpy
-from utils.metrics import QuantilesCRPS
+from metrics.quantiles import QuantilesCRPS, Quantiles_inverse_eCDF
+from metrics.probabilistic import mae_per_threshold
 from plotting.quantiles import plot_quantile_losses
 from plotting.distributions import plot_data_distribution
 
@@ -104,4 +105,15 @@ if __name__ == "__main__":
     fig = plot_quantile_losses({"model": pred}, y_true, quantiles,
                                 savepath=f"{figpath}/quantile_losses.svg")
     wandb.log({"quantile_losses": wandb.Image(fig)})
+
+    # Compute the MAE between the true value and the prediction of the model at a given
+    # point of the CDF
+    thresholds = np.linspace(0, 1, 11)
+    inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
+    maes = mae_per_threshold(y_true, pred, inverse_CDF, thresholds)
+    print("MAE per threshold:")
+    print(maes)
+    # Log the thresholds and the MAEs to a W&B table
+    table = wandb.Table(columns=["threshold", "MAE"], data=[[t, m] for t, m in zip(thresholds, maes)])
+    wandb.log({"mae_per_threshold": table})
 
