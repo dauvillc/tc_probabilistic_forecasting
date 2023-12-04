@@ -59,6 +59,7 @@ def create_model(datacube_size, datacube_channels, num_input_variables,
 
 
 if __name__ == "__main__":
+    pl.seed_everything(42)
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
@@ -97,6 +98,7 @@ if __name__ == "__main__":
     wandb_logger.log_hyperparams(args)
     wandb_logger.log_hyperparams({"input_variables": input_variables,
                                     "output_variables": output_variables,
+                                    "forecast_type": "probabilistic",
                                     "quantiles": quantiles})
 
     # ====== MODELS CREATION ====== #
@@ -104,11 +106,14 @@ if __name__ == "__main__":
     loss_function = MultipleQuantileLoss(quantiles=quantiles, reduction="mean")
     # Additional metrics to track:
     metrics = {}
+    # First, we'll track the MAE (the 0.5 quantile loss) alone, to compare it with deterministic models
+    mae = MultipleQuantileLoss(quantiles=[0.5], reduction="mean")
+    metrics["mae"] = lambda x, y: 2 * mae(x, y)  # The 0.5 quantile loss is half the MAE
     # We're interested in the higher quantiles, so we'll also track the MQL for all quantiles
     # higher than a certain threshold.
     min_quantiles = [0.5, 0.75, 0.9, 0.95]
     for q in min_quantiles:
-        metrics[f"MQL_{q}"] = MultipleQuantileLoss(quantiles, reduction="mean", min_quantile=q)
+        metrics[f"CQL_{q}"] = MultipleQuantileLoss(quantiles, reduction="mean", min_quantile=q)
     # We'll also track the CRPS, and consider the min wind speed to be 0 and the max to be 100 m/s
     metrics["CRPS"] = QuantilesCRPS(quantiles, 0, 100)
 
