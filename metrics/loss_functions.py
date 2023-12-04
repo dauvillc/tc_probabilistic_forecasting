@@ -95,8 +95,6 @@ class MultipleQuantileLoss(nn.Module):
                 # If no weights are provided and no normalization is applied,
                 # we can just use a tensor of ones.
                 self.weights = torch.ones_like(self.quantiles)
-        # Normalize the weights so that they sum to 1
-        self.weights = self.weights / torch.sum(self.weights)
 
     def __call__(self, y_pred, y_true): 
         # y_pred has shape (N, T, Q) where N is the batch size,
