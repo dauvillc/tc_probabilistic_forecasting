@@ -4,7 +4,7 @@ Tests the data loading and evaluation functions.
 import sys
 sys.path.append("./")
 import numpy as np
-from metrics.probabilistic import mae_per_threshold
+from metrics.probabilistic import metric_per_threshold 
 from metrics.quantiles import Quantiles_inverse_eCDF
 
 
@@ -21,12 +21,34 @@ if __name__ == "__main__":
     inverse_CDF = Quantiles_inverse_eCDF(quantiles, min_val=0, max_val=100)
     # Compute the MAE per threshold
     thresholds = np.array([0, 0.25, 0.5, 0.75, 1])
-    mae = mae_per_threshold(y_true, predicted_quantiles, inverse_CDF, thresholds)
+    mae = metric_per_threshold("mae", y_true, predicted_quantiles, inverse_CDF, thresholds)
     print("Quantile regression:")
     print(mae)
     # Expected output:
     # Quantile regression:
     #    threshold  MAE
+    # 0       0.00  30.0
+    # 1       0.25  30.0
+    # 2       0.50   0.0
+    # 3       0.75   0.0
+    # 4       1.00  70.0
+
+    # Compute the bias per threshold
+    bias = metric_per_threshold("bias", y_true, predicted_quantiles, inverse_CDF, thresholds)
+    print(bias)
+    # Expected output:
+    #    threshold   bias
+    # 0       0.00  -30.0
+    # 1       0.25  -30.0
+    # 2       0.50    0.0
+    # 3       0.75    0.0
+    # 4       1.00   70.0
+
+    # Compute the RMSE per threshold
+    rmse = metric_per_threshold("rmse", y_true, predicted_quantiles, inverse_CDF, thresholds)
+    print(rmse)
+    # Expected output:
+    #    threshold  rmse
     # 0       0.00  30.0
     # 1       0.25  30.0
     # 2       0.50   0.0

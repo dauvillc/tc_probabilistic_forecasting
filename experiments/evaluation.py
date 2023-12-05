@@ -14,10 +14,10 @@ from data_processing.assemble_experiment_dataset import load_dataset
 from experiments.quantile_regression import create_model
 from utils.utils import to_numpy
 from metrics.quantiles import QuantilesCRPS, Quantiles_inverse_eCDF
-from metrics.probabilistic import mae_per_threshold
+from metrics.probabilistic import metric_per_threshold
 from plotting.quantiles import plot_quantile_losses
 from plotting.distributions import plot_data_distribution
-from plotting.probabilistic import plot_mae_per_threshold
+from plotting.probabilistic import plot_metric_per_threshold
 
 
 if __name__ == "__main__":
@@ -111,18 +111,25 @@ if __name__ == "__main__":
     fig = plot_quantile_losses({"model": pred}, y_true, quantiles,
                                 savepath=f"{figpath}/quantile_losses.svg")
     wandb.log({"quantile_losses": wandb.Image(fig)})
-
-    # Compute the MAE between the true value and the prediction of the model at different points
-    # in the CDF
-    thresholds = np.linspace(0, 1, 31)
+    
+    # We'll now compute several metrics per threshold:
+    # Given a true value y and its associated predicted distribution F,
+    # we compute the metric L(y, F^{-1}(u)) for each threshold u.
+    thresholds = np.linspace(0, 1, 21)
+    # These metrics will be computed over the whole validation set, but also
+    # for subsets consisting of increasingly extreme values
+    y_true_quantiles = [0.5, 0.75, 0.9, 0.95]
+    # Compute the inverse of the empirical CDF
     inverse_CDF = Quantiles_inverse_eCDF(quantiles, 0, max_wind_speed * 1.1)
-    maes = mae_per_threshold(y_true, pred, inverse_CDF, thresholds,
-                             y_true_quantiles=[0.5, 0.75, 0.9, 0.95])
-    # Plot the MAE per threshold
-    fig = plot_mae_per_threshold(maes, y_true_quantiles=[0.5, 0.75, 0.9, 0.95],
-                                 save_path=f"{figpath}/mae_per_threshold.svg")
-    wandb.log({"mae_per_threshold_plot": wandb.Image(fig)})
-    # Log the thresholds and the MAEs to a W&B table
-    maes_table = wandb.Table(dataframe=maes)
-    wandb.log({"mae_per_threshold": maes_table})
+    # Compute the metrics
+    metrics = ["bias", "mae", "rmse"]
+    for metric in metrics:
+        metric_df = metric_per_threshold(metric, y_true, pred, inverse_CDF, thresholds,
+                                         y_true_quantiles)
+        # Plot the metric per threshold
+        fig = plot_metric_per_threshold(metric, metric_df, y_true_quantiles,
+                                        save_path=f"{figpath}/{metric}_per_threshold.svg")
+        wandb.log({f"{metric}_per_threshold": wandb.Image(fig)})
+        # Log the metric per threshold to wandb
+        wandb.log({f"{metric}_per_threshold": wandb.Table(dataframe=metric_df)})
 
