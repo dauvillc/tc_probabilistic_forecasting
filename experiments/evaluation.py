@@ -11,13 +11,12 @@ import pytorch_lightning as pl
 from pathlib import Path
 from models.main_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
-from experiments.quantile_regression import create_model
 from utils.utils import to_numpy
-from metrics.quantiles import QuantilesCRPS, Quantiles_inverse_eCDF
 from metrics.probabilistic import metric_per_threshold
 from plotting.quantiles import plot_quantile_losses
 from plotting.distributions import plot_data_distribution
 from plotting.probabilistic import plot_metric_per_threshold
+from experiments.training import create_model, create_output_distrib
 
 
 if __name__ == "__main__":
@@ -50,7 +49,6 @@ if __name__ == "__main__":
     for key, value in evaluated_run.config.items():
         if key not in args:
             vars(args)[key] = value
-    quantiles = args.quantiles
     past_steps, future_steps = args.past_steps, args.future_steps
 
     # ====== DATA LOADING ====== #
@@ -59,6 +57,11 @@ if __name__ == "__main__":
     args.input_data = input_data
     train_dataset, val_dataset, train_loader, val_loader = load_dataset(args, input_variables, output_variables)
 
+    # ===== OUTPUT DISTRIBUTION RECONSTRUCTION ====== #
+    # Create the output distribution
+    distrib_name = evaluated_run.config["distribution"]
+    distrib = create_output_distrib(distrib_name, train_dataset)
+    
     # ====== MODEL RECONSTRUCTION ====== #
     # Create the model architecture
     # We need to re-create the architecture, as it is not created within the LightningModule.
@@ -68,7 +71,7 @@ if __name__ == "__main__":
     datacube_channels = train_dataset.datacube_channels()
     num_input_variables = len(input_variables) * past_steps
     model = create_model(datacube_size, datacube_channels, num_input_variables,
-                         future_steps, len(quantiles), hidden_channels=args.hidden_channels)
+                         future_steps, distrib.n_parameters, hidden_channels=args.hidden_channels)
     prediction_model = model.prediction_model
     projection_model = model.projection_model
     
@@ -82,6 +85,7 @@ if __name__ == "__main__":
                                                       projection_model=projection_model)
     # Log the evaluation config
     wandb.log(vars(args))
+    wandb.log(distrib.hyperparameters())
 
     # ====== EVALUATION ====== #
     # Make predictions on the validation set
@@ -94,23 +98,15 @@ if __name__ == "__main__":
     figpath.mkdir(exist_ok=True)
 
     # Plot the distribution of the true values
-    fig = plot_data_distribution(y_true, quantiles=quantiles, savepath=f"{figpath}/true_distribution.svg")
+    fig = plot_data_distribution(y_true, quantiles=[0.1, 0.5, 0.75, 0.9, 0.95],
+                                 savepath=f"{figpath}/true_distribution.svg")
     wandb.log({"true_distribution": wandb.Image(fig)})
 
     # Compute the CRPS
-    # For that, we need the maximum of the wind speed distribution
-    # taken from the training dataset (we'll consider the min to be 0)
-    _, max_wind_speed = train_dataset.target_support("INTENSITY")
     # As the max in the validation dataset might be higher, we'll apply some margin
-    crps_computer = QuantilesCRPS(quantiles, 0, max_wind_speed * 1.1)
-    crps = crps_computer(pred, y_true)
+    crps = distrib.metrics["CRPS"](pred, y_true)
     print("Average CRPS:", crps)
     wandb.log({"avg_crps": crps})
-
-    # Plot the quantile losses and log them to wandb
-    fig = plot_quantile_losses({"model": pred}, y_true, quantiles,
-                                savepath=f"{figpath}/quantile_losses.svg")
-    wandb.log({"quantile_losses": wandb.Image(fig)})
     
     # We'll now compute several metrics per threshold:
     # Given a true value y and its associated predicted distribution F,
@@ -119,8 +115,8 @@ if __name__ == "__main__":
     # These metrics will be computed over the whole validation set, but also
     # for subsets consisting of increasingly extreme values
     y_true_quantiles = [0.5, 0.75, 0.9, 0.95]
-    # Compute the inverse of the empirical CDF
-    inverse_CDF = Quantiles_inverse_eCDF(quantiles, 0, max_wind_speed * 1.1)
+    # Get the inverse of the CDF, specific to the distribution
+    inverse_CDF = distrib.inverse_cdf
     # Compute the metrics
     metrics = ["bias", "mae", "rmse"]
     for metric in metrics:
@@ -132,4 +128,11 @@ if __name__ == "__main__":
         wandb.log({f"{metric}_per_threshold": wandb.Image(fig)})
         # Log the metric per threshold to wandb
         wandb.log({f"{metric}_per_threshold": wandb.Table(dataframe=metric_df)})
+
+    # DISTRIBUTION-SPECIFIC PLOTS
+    if distrib_name in ["quantile_composite", "qc"]:
+        # Plot the quantile losses and log them to wandb
+        fig = plot_quantile_losses({"model": pred}, y_true, distrib.quantiles,
+                                    savepath=f"{figpath}/quantile_losses.svg")
+        wandb.log({"quantile_losses": wandb.Image(fig)})
 

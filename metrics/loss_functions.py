@@ -53,12 +53,12 @@ class MultipleQuantileLoss(nn.Module):
         The weights associated with each quantile.
         By default, no weights are applied.
     reduction: str, optional
-        Either "none" (default), "mean" or "sum".
+        Either "none", "mean" or "sum".
     min_quantile: float, optional
         If not None, only quantiles greater than or equal to this value
         will be considered.
     """
-    def __init__(self, quantiles, normalize=False, weights=None, reduction="none",
+    def __init__(self, quantiles, normalize=False, weights=None, reduction="mean",
                  min_quantile=None):
         super().__init__()
         self.quantiles = torch.tensor(quantiles)
