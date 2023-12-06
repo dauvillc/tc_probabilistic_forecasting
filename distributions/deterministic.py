@@ -3,6 +3,7 @@ Implements the DeterministicDistribution class, which is useful to integrate a d
 model into the probabilistic pipeline.
 """
 import torch
+import numpy as np
 
 
 def flatten_MSE(y_pred, y_true):
@@ -12,23 +13,24 @@ def flatten_MSE(y_pred, y_true):
     return torch.mean((y_pred.flatten() - y_true.flatten()) ** 2)
 
 
-def flatten_RMSE(y_pred, y_true):
-    """
-    Flattens the tensor and computes the RMSE.
-    """
-    return torch.sqrt(flatten_MSE(y_pred, y_true))
-
-
-def flatten_MAE(y_pred, y_true):
+def flatten_MAE_np(y_pred, y_true):
     """
     Flattens the tensor and computes the MAE.
     """
-    return torch.mean(torch.abs(y_pred.flatten() - y_true.flatten()))
+    return np.mean(np.abs(y_pred.flatten() - y_true.flatten()))
+
+
+def flatten_RMSE_np(y_pred, y_true):
+    """
+    Flattens the tensor and computes the RMSE.
+    """
+    return np.sqrt(np.mean((y_pred.flatten() - y_true.flatten()) ** 2))
 
 
 class DeterministicDistribution:
     """
-    Object that defines a deterministic distribution.
+    Object that defines a deterministic distribution, i.e. the CDF is the step function
+    that assigns probability 1 after the predicted value, and 0 before it.
     """
     def __init__(self):
         # The distribution P(y|x) is deterministic, so it is characterized by a single
@@ -42,8 +44,9 @@ class DeterministicDistribution:
         
         # Define the metrics
         self.metrics = {
-                'RMSE': flatten_RMSE,
-                'MAE': flatten_MAE
+                'RMSE': flatten_RMSE_np,
+                'MAE': flatten_MAE_np,
+                'CRPS': flatten_MAE_np  # The CRPS is the MAE for a deterministic distribution
                 }
     
     def hyperparameters(self):
@@ -51,3 +54,18 @@ class DeterministicDistribution:
         Returns the hyperparameters of the distribution.
         """
         return {}
+    
+    def cdf(self, y_pred, y):
+        """
+        Given a deterministic distribution that always outputs y, the CDF is defined as
+        1 for y_pred >= y, and 0 otherwise.
+        """
+        return torch.heaviside(y_pred - y, torch.tensor([1.0]))
+
+    def inverse_cdf(self, y, u):
+        """
+        Given a deterministic distribution that always outputs y, the inverse CDF is
+        defined as y for any u in [0, 1].
+        """
+        return y
+

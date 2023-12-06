@@ -36,7 +36,7 @@ if __name__ == "__main__":
     run = wandb.init(project="tc_prediction", name="eval_" + args.name, job_type="eval")
     api = wandb.Api()
     # Search for all runs with the same name
-    runs = api.runs("arches/tc_prediction", filters={"config.name": args.name})
+    runs = api.runs("arches/tc_prediction", filters={"config.experiment.name": args.name})
     if len(runs) == 0:
         raise ValueError(f"No runs with name {args.name} were found.")
     # If several runs have the same name, we'll use any but print a warning
@@ -46,20 +46,19 @@ if __name__ == "__main__":
     evaluated_run = runs[0]
     run_id = evaluated_run.id
     # We can now retrieve the config of the run
-    for key, value in evaluated_run.config.items():
-        if key not in args:
-            vars(args)[key] = value
-    past_steps, future_steps = args.past_steps, args.future_steps
+    cfg = evaluated_run.config
+    experiment_cfg = cfg["experiment"]
+    model_cfg = cfg["model_hyperparameters"]
+    past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
 
     # ====== DATA LOADING ====== #
     # Retrieve the input type from the run config
-    input_data = evaluated_run.config["input_data"]
-    args.input_data = input_data
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(args, input_variables, output_variables)
+    input_data = experiment_cfg["input_data"]
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, output_variables)
 
     # ===== OUTPUT DISTRIBUTION RECONSTRUCTION ====== #
     # Create the output distribution
-    distrib_name = evaluated_run.config["distribution"]
+    distrib_name = experiment_cfg["distribution"]
     distrib = create_output_distrib(distrib_name, train_dataset)
     
     # ====== MODEL RECONSTRUCTION ====== #
@@ -71,7 +70,7 @@ if __name__ == "__main__":
     datacube_channels = train_dataset.datacube_channels()
     num_input_variables = len(input_variables) * past_steps
     model = create_model(datacube_size, datacube_channels, num_input_variables,
-                         future_steps, distrib.n_parameters, hidden_channels=args.hidden_channels)
+                         future_steps, distrib.n_parameters, hidden_channels=model_cfg['hidden_channels'])
     prediction_model = model.prediction_model
     projection_model = model.projection_model
     
@@ -84,17 +83,17 @@ if __name__ == "__main__":
                                                       prediction_model=prediction_model,
                                                       projection_model=projection_model)
     # Log the evaluation config
-    wandb.log(vars(args))
+    wandb.log(cfg)
     wandb.log(distrib.hyperparameters())
 
     # ====== EVALUATION ====== #
     # Make predictions on the validation set
-    y_true = val_dataset.future_target
+    y_true = to_numpy(val_dataset.future_target)
     trainer = pl.Trainer(accelerator="gpu", max_epochs=1)
     pred = np.concatenate([to_numpy(p) for p in trainer.predict(model, val_loader)], axis=0)
 
     # Create a directory in the figures folder specific to this experiment
-    figpath = Path(f"figures/{args.name}")
+    figpath = Path(f"figures/{experiment_cfg['name']}")
     figpath.mkdir(exist_ok=True)
 
     # Plot the distribution of the true values
