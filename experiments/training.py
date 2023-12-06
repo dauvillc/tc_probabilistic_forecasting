@@ -3,8 +3,8 @@ Uses a CNN with the Multiple Quantile Loss.
 """
 import sys
 sys.path.append("./")
-import argparse
 import pytorch_lightning as pl
+import yaml
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from data_processing.assemble_experiment_dataset import load_dataset
@@ -12,6 +12,7 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from distributions.quantile_composite import QuantileCompositeDistribution
+from distributions.deterministic import DeterministicDistribution
 
 
 def create_model(datacube_size, datacube_channels, num_input_variables,
@@ -76,6 +77,10 @@ def create_output_distrib(distrib_name, training_dataset):
         # The distribution is defined by the quantiles
         _, max_wind_speed = training_dataset.target_support("INTENSITY")
         distribution = QuantileCompositeDistribution(0, 1.1 * max_wind_speed)
+    elif distrib_name == 'deterministic':
+        # Using a dummy distribution that is deterministic allows to use the same
+        # code for deterministic and probabilistic models
+        distribution = DeterministicDistribution()
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution
@@ -86,47 +91,32 @@ if __name__ == "__main__":
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     output_variables = ['INTENSITY']
-    # Argument parser
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--name", type=str, required=True,
-                        help="The name of the experiment.")
-    parser.add_argument("-d", "--distribution", type=str, required=True,
-                        help="The distribution to use.")
-    parser.add_argument("-p", "--past_steps", type=int, default=4,
-                        help="Number of time steps given as input to the model. Must be >= 3.")
-    parser.add_argument("-n", "--future_steps", type=int, default=4,
-                        help="Number of time steps to predict.")
-    parser.add_argument("--hidden_channels", type=int, default=4,
-                        help="Number of channels in the first convolutional layer.")
-    parser.add_argument("--depth" , type=int, default=5,
-                        help="Number of convolutional blocks.")
-    parser.add_argument("--epochs", type=int, default=100,
-                        help="Number of epochs to train the model for.")
-    parser.add_argument("--batch_size", type=int, default=128,
-                        help="Batch size.")
-    parser.add_argument("--input_data", type=str, default="era5+hursat",
-                        help="The input data to use. Can be 'era5', 'hursat' or 'era5+hursat'.")
-    args = parser.parse_args()
-    past_steps, future_steps = args.past_steps, args.future_steps
-    epochs = args.epochs
+
+    # Load the configuration file
+    with open("training_cfg.yml", "r") as f:
+        cfg = yaml.safe_load(f)
+        experiment_cfg = cfg["experiment"]
+        training_cfg = cfg["training_settings"]
+        model_cfg = cfg["model_hyperparameters"]
+    past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
+
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
 
     # ====== DATA LOADING ====== #
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(args, input_variables, output_variables)
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, output_variables)
 
     # ====== DISTRIBUTION CREATION ====== #
     # Create the output distribution
-    distrib = create_output_distrib(args.distribution, train_dataset)
+    distrib = create_output_distrib(experiment_cfg['distribution'], train_dataset)
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
-    wandb_logger = WandbLogger(project="tc_prediction", name=args.name, log_model="all")
-    # Log the hyperparameters
-    wandb_logger.log_hyperparams(args)
+    wandb_logger = WandbLogger(project="tc_prediction", name=experiment_cfg['name'], log_model="all")
+    # Log the config and hyperparameters
+    wandb_logger.log_hyperparams(cfg)
     wandb_logger.log_hyperparams({"input_variables": input_variables,
-                                    "output_variables": output_variables,
-                                    "forecast_type": "probabilistic"})
+                                    "output_variables": output_variables})
     wandb_logger.log_hyperparams(distrib.hyperparameters())
 
     # ====== MODELS CREATION ====== #
@@ -144,13 +134,13 @@ if __name__ == "__main__":
     model =  create_model(datacube_size, channels, num_input_variables,
                           future_steps, distrib.n_parameters,
                           loss_function=loss_function,
-                          hidden_channels=args.hidden_channels,
+                          hidden_channels=model_cfg['hidden_channels'],
                           metrics=metrics)
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
     trainer = pl.Trainer(accelerator='gpu', precision="bf16-mixed",
-                         max_epochs=epochs, logger=wandb_logger,
+                         max_epochs=training_cfg['epochs'], logger=wandb_logger,
                          callbacks=[ModelCheckpoint(monitor='val_loss', mode='min')])
     trainer.fit(model, train_loader, val_loader)
 

@@ -1,0 +1,22 @@
+experiment:
+  name: e5_MSE
+  # Output distribution:
+  # - "deterministic" (MSE regression)
+  # - "qc" (quantiles composite)
+  distribution: deterministic
+  # Type of input data. Can be "era5", "hursat" or "era5+hursat"
+  input_data: era5
+  # Number of past time steps given as input
+  past_steps: 4
+  # Number of time steps to predict at once
+  future_steps: 4
+training_settings:
+  epochs: 100
+  batch_size: 128
+model_hyperparameters:
+  # Number of convolutional blocks (Each block has 2 Conv layers)
+  depth: 5
+  # Number of channels in the first hidden layer
+  hidden_channels: 4
+
+

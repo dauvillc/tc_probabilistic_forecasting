@@ -10,15 +10,15 @@ from utils.utils import hours_to_sincos
 
 
 
-def load_dataset(args, input_variables, output_variables):
+def load_dataset(cfg, input_variables, output_variables):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
 
     Parameters
     ----------
-    args : argparse.Namespace
-        The arguments of the script.
+    cfg: mapping of str to Any
+        The configuration of the experiment.
     input_variables : list of str
         The list of the input variables.
     output_variables : list of str
@@ -31,7 +31,7 @@ def load_dataset(args, input_variables, output_variables):
     train_loader : torch.utils.data.DataLoader
     val_loader : torch.utils.data.DataLoader
     """
-    past_steps, future_steps = args.past_steps, args.future_steps
+    past_steps, future_steps = cfg['experiment']['past_steps'], cfg['experiment']['future_steps']
     # Load the trajectory forecasting dataset
     all_trajs = intensity_dataset()
     # Add a column with the sin/cos encoding of the hours, which will be used as input
@@ -47,13 +47,14 @@ def load_dataset(args, input_variables, output_variables):
     # Keep only the storms for which we have HURSAT-B1 data
     all_trajs = all_trajs.merge(found_storms, on=['SID', 'ISO_TIME'])
     # Load the right patches depending on the input data
-    if args.input_data == "era5":
+    input_data = cfg['experiment']['input_data']
+    if input_data == "era5":
         # Load the ERA5 patches associated to the dataset
         atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
         patches = datacube_to_tensor(surface_patches)
-    elif args.input_data == "hursat":
+    elif input_data == "hursat":
         patches = datacube_to_tensor(hursat_data)
-    elif args.input_data == "era5+hursat":
+    elif input_data == "era5+hursat":
         # Load the ERA5 patches associated to the dataset
         atmo_patches, surface_patches = load_era5_patches(all_trajs, load_atmo=False)
         era5_patches = datacube_to_tensor(surface_patches)
@@ -94,7 +95,8 @@ def load_dataset(args, input_variables, output_variables):
                                          yield_input_variables=yield_input_variables,
                                          normalise_from=train_dataset)
     # Create the train and validation data loaders
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    batch_size = cfg['training_settings']['batch_size']
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
     return train_dataset, val_dataset, train_loader, val_loader
