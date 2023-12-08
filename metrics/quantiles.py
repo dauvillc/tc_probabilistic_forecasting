@@ -89,8 +89,8 @@ class Quantiles_inverse_eCDF:
         predicted_quantiles: torch.Tensor of shape (N, Q)
             where N is the number of samples and Q is the number of quantiles.
             The predicted quantiles.
-        u: torch.Tensor of shape (N,)
-            The probabilities at which the inverse empirical CDF is evaluated.
+        u: float 
+            The probability at which the inverse empirical CDF is computed.
 
         Returns
         -------

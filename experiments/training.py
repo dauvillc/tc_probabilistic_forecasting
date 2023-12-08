@@ -12,6 +12,7 @@ from models.main_structure import StormPredictionModel
 from models.cnn3d import CNN3D
 from models.variables_projection import VectorProjection3D
 from distributions.quantile_composite import QuantileCompositeDistribution
+from distributions.normal import NormalDistribution
 from distributions.deterministic import DeterministicDistribution
 
 
@@ -77,6 +78,8 @@ def create_output_distrib(distrib_name, training_dataset):
         # The distribution is defined by the quantiles
         _, max_wind_speed = training_dataset.target_support("INTENSITY")
         distribution = QuantileCompositeDistribution(0, 1.1 * max_wind_speed)
+    elif distrib_name == 'normal':
+        distribution = NormalDistribution()
     elif distrib_name == 'deterministic':
         # Using a dummy distribution that is deterministic allows to use the same
         # code for deterministic and probabilistic models
