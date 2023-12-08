@@ -3,7 +3,6 @@ Implements the DeterministicDistribution class, which is useful to integrate a d
 model into the probabilistic pipeline.
 """
 import torch
-import numpy as np
 
 
 def flatten_MSE(y_pred, y_true):
@@ -13,18 +12,18 @@ def flatten_MSE(y_pred, y_true):
     return torch.mean((y_pred.flatten() - y_true.flatten()) ** 2)
 
 
-def flatten_MAE_np(y_pred, y_true):
+def flatten_MAE(y_pred, y_true):
     """
     Flattens the tensor and computes the MAE.
     """
-    return np.mean(np.abs(y_pred.flatten() - y_true.flatten()))
+    return torch.mean(torch.abs(y_pred.flatten() - y_true.flatten()))
 
 
-def flatten_RMSE_np(y_pred, y_true):
+def flatten_RMSE(y_pred, y_true):
     """
     Flattens the tensor and computes the RMSE.
     """
-    return np.sqrt(np.mean((y_pred.flatten() - y_true.flatten()) ** 2))
+    return torch.sqrt(torch.mean((y_pred.flatten() - y_true.flatten()) ** 2))
 
 
 class DeterministicDistribution:
@@ -44,9 +43,9 @@ class DeterministicDistribution:
         
         # Define the metrics
         self.metrics = {
-                'RMSE': flatten_RMSE_np,
-                'MAE': flatten_MAE_np,
-                'CRPS': flatten_MAE_np  # The CRPS is the MAE for a deterministic distribution
+                'RMSE': flatten_RMSE,
+                'MAE': flatten_MAE,
+                'CRPS': flatten_MAE  # The CRPS is the MAE for a deterministic distribution
                 }
     
     def hyperparameters(self):

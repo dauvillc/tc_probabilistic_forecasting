@@ -7,11 +7,11 @@ sys.path.append("./")
 import argparse
 import numpy as np
 import wandb
+import torch
 import pytorch_lightning as pl
 from pathlib import Path
 from models.main_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
-from utils.utils import to_numpy
 from metrics.probabilistic import metric_per_threshold
 from plotting.quantiles import plot_quantile_losses
 from plotting.distributions import plot_data_distribution
@@ -88,9 +88,9 @@ if __name__ == "__main__":
 
     # ====== EVALUATION ====== #
     # Make predictions on the validation set
-    y_true = to_numpy(val_dataset.future_target)
+    y_true = val_dataset.future_target
     trainer = pl.Trainer(accelerator="gpu", max_epochs=1)
-    pred = np.concatenate([to_numpy(p) for p in trainer.predict(model, val_loader)], axis=0)
+    pred = torch.cat([p.cpu().detach() for p in trainer.predict(model, val_loader)], dim=0)
 
     # Create a directory in the figures folder specific to this experiment
     figpath = Path(f"figures/{experiment_cfg['name']}")
