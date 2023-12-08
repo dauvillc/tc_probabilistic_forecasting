@@ -2,6 +2,7 @@
 Implements various functions to evaluate the quality of a set of
 predicted quantiles.
 """
+import torch
 import numpy as np
 from utils.utils import to_numpy
 
@@ -13,7 +14,7 @@ class Quantiles_eCDF:
 
     Parameters
     ----------
-    quantiles: array-like or torch.Tensor
+    quantiles: array-like of floats
         The quantiles that define the empirical CDF, between 0 and 1.
     min_val: float
         Minimum value of the empirical CDF (beginning of the support).
@@ -21,11 +22,12 @@ class Quantiles_eCDF:
         Maximum value of the empirical CDF (end of the support).
     """
     def __init__(self, quantiles, min_val, max_val):
-        self.quantiles = to_numpy(quantiles)
         self.min_val = min_val
         self.max_val = max_val
+        # Convert the quantiles to a torch.Tensor
+        self.quantiles = torch.tensor(quantiles, dtype=torch.float32)
         # Add 0 and 1 to the quantiles for generality
-        self.quantiles = np.concatenate(([0], self.quantiles, [1]))
+        self.quantiles = torch.cat((torch.tensor([0]), self.quantiles, torch.tensor([1])))
 
     def __call__(self, predicted_quantiles, y):
         """
@@ -34,25 +36,25 @@ class Quantiles_eCDF:
 
         Parameters
         ----------
-        predicted_quantiles: array-like or torch.Tensor
+        predicted_quantiles: torch.Tensor of shape (N, Q)
+            where N is the number of samples and Q is the number of quantiles.
             The predicted quantiles.
-        y: array-like or torch.Tensor
-            The points at which the empirical CDF is evaluated.
-            
+        y: torch.Tensor of shape (N,)
+            The values at which the empirical CDF is evaluated.
+
         Returns
         -------
-        The probability that Y <= y, as a ndarray.
+        The empirical CDF at y, as a torch.Tensor.
         """
-        predicted_quantiles = to_numpy(predicted_quantiles)
-        y = to_numpy(y)
-        # Add the minimum and maximum values to the predicted quantiles
-        # for generality
-        predicted_quantiles = np.concatenate(([self.min_val], predicted_quantiles, [self.max_val]))
+        # Add the maximum value to the predicted quantiles for generality
+        predicted_quantiles = torch.cat((predicted_quantiles,
+                                         torch.full_like(predicted_quantiles[:, :1], self.max_val)), dim=1)
         # Find the index of the predicted quantile that is just below y
         # (or equal to y)
-        index = np.searchsorted(predicted_quantiles, y, side='right') - 1
-        # Return the empirical CDF at y as the corresponding quantile
-        return self.quantiles[index]
+        index = torch.searchsorted(self.quantiles, y, right=False) - 1
+        # Compute the empirical CDF at y as the corresponding quantile
+        return predicted_quantiles[:, index]
+
 
 
 class Quantiles_inverse_eCDF:
@@ -62,7 +64,7 @@ class Quantiles_inverse_eCDF:
 
     Parameters
     ----------
-    quantiles: array-like or torch.Tensor
+    quantiles: array-like of floats
         The quantiles that define the empirical CDF, between 0 and 1.
     min_val: float
         Minimum value of the empirical CDF (beginning of the support).
@@ -70,37 +72,37 @@ class Quantiles_inverse_eCDF:
         Maximum value of the empirical CDF (end of the support).
     """
     def __init__(self, quantiles, min_val, max_val):
-        self.quantiles = to_numpy(quantiles)
         self.min_val = min_val
         self.max_val = max_val
+        # Convert the quantiles to a torch.Tensor
+        self.quantiles = torch.tensor(quantiles, dtype=torch.float32)
         # Add 0 and 1 to the quantiles for generality
-        self.quantiles = np.concatenate(([0], self.quantiles, [1]))
+        self.quantiles = torch.cat((torch.tensor([0]), self.quantiles, torch.tensor([1])))
 
     def __call__(self, predicted_quantiles, u):
         """
-        Returns the inverse of the empirical CDF at a given probability u.
+        Computes the inverse of the empirical CDF from the predicted quantiles,
+        and then evaluates it at u.
 
         Parameters
         ----------
-        predicted_quantiles: array-like or torch.Tensor
+        predicted_quantiles: torch.Tensor of shape (N, Q)
+            where N is the number of samples and Q is the number of quantiles.
             The predicted quantiles.
-        u: array-like or torch.Tensor
-            The probability at which the inverse empirical CDF is evaluated.
-        
+        u: torch.Tensor of shape (N,)
+            The probabilities at which the inverse empirical CDF is evaluated.
+
         Returns
         -------
-        The inverse empirical CDF at u, as a ndarray.
+        The inverse empirical CDF at u, as a torch.Tensor.
         """
-        predicted_quantiles = to_numpy(predicted_quantiles)
-        u = to_numpy(u)
-        # Add the minimum and maximum values to the predicted quantiles
-        # for generality
-        predicted_quantiles = np.concatenate(([self.min_val], predicted_quantiles, [self.max_val]))
-        # Find the index of the predicted quantile that is just below u
-        # (or equal to u)
-        index = np.searchsorted(self.quantiles, u, side='right') - 1
-        # Return the inverse empirical CDF at u as the corresponding quantile
-        return predicted_quantiles[index]
+        # Add the minimum value to the predicted quantiles for generality
+        predicted_quantiles = torch.cat((torch.full_like(predicted_quantiles[:, :1], self.min_val),
+                                            predicted_quantiles), dim=1)
+        # Find the index of the quantile that is just below u 
+        index = torch.searchsorted(self.quantiles, u, right=True) - 1
+        # Compute the inverse empirical CDF at u as the corresponding quantile
+        return predicted_quantiles[:, index]
 
 
 class QuantilesCRPS:

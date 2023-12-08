@@ -110,7 +110,7 @@ if __name__ == "__main__":
     # We'll now compute several metrics per threshold:
     # Given a true value y and its associated predicted distribution F,
     # we compute the metric L(y, F^{-1}(u)) for each threshold u.
-    thresholds = np.linspace(0, 1, 21)
+    thresholds = np.linspace(0, 1, 22)[1:-1]
     # These metrics will be computed over the whole validation set, but also
     # for subsets consisting of increasingly extreme values
     y_true_quantiles = [0.5, 0.75, 0.9, 0.95]
@@ -126,7 +126,7 @@ if __name__ == "__main__":
                                         save_path=f"{figpath}/{metric}_per_threshold.svg")
         wandb.log({f"{metric}_per_threshold": wandb.Image(fig)})
         # Log the metric per threshold to wandb
-        wandb.log({f"{metric}_per_threshold": wandb.Table(dataframe=metric_df)})
+        wandb.log({f"{metric}_per_threshold_table": wandb.Table(dataframe=metric_df)})
 
     # DISTRIBUTION-SPECIFIC PLOTS
     if distrib_name in ["quantile_composite", "qc"]:

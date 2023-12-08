@@ -1,9 +1,8 @@
 """
 Implements functions to evaluate a probabilistic forecast.
 """
-import numpy as np
+import torch
 import pandas as pd
-from utils.utils import to_numpy
 
 
 def metric_per_threshold(metric, y_true, predicted_params, inverse_CDF, thresholds,
@@ -17,16 +16,16 @@ def metric_per_threshold(metric, y_true, predicted_params, inverse_CDF, threshol
     ----------
     metric: str
         Name of the metric to be evaluated. Can be "bias", "MAE" or "RMSE".
-    y_true: array-like or torch.Tensor of shape (N, T)
+    y_true: torch.Tensor of shape (N, T)
         The true values.
-    predicted_params: array-like or torch.Tensor of shape (N, T, P)
+    predicted_params: torch.Tensor of shape (N, T, P)
         where N is the number of samples, P is the number of parameters
         and T is the number of time steps.
         The predicted parameters, which characterize the predictive distribution.
-    inverse_CDF: callable f: (predicted_params, u) -> ndarray
+    inverse_CDF: callable f: (predicted_params, u) -> torch.Tensor
         Function that computes the inverse of the empirical CDF at a given probability u,
         given the predicted parameters.
-    thresholds: array-like or torch.Tensor
+    thresholds: list of floats
         Probability thresholds at which the metric is evaluated, as floats between 0 and 1.
     y_true_quantiles: list of floats, optional
         If not None, list of quantiles that define subsets of the data. The MAE per threshold
@@ -47,31 +46,22 @@ def metric_per_threshold(metric, y_true, predicted_params, inverse_CDF, threshol
     if metric == "bias":
         metric_func = lambda y_true, y_pred: y_pred - y_true
     elif metric == "mae":
-        metric_func = lambda y_true, y_pred: np.abs(y_pred - y_true)
+        metric_func = lambda y_true, y_pred: torch.abs(y_pred - y_true)
     elif metric == "rmse":
         metric_func = lambda y_true, y_pred: (y_pred - y_true)**2
-    y_true = to_numpy(y_true)
-    predicted_params = to_numpy(predicted_params)
-    # Reshape the true values to (N * T,) and the predicted parameters to (N * T, P)
-    # to evaluate all the samples and time steps at once
-    y_true = y_true.reshape(-1)
-    predicted_params = predicted_params.reshape(-1, predicted_params.shape[-1])
-    thresholds = to_numpy(thresholds)
+    # Flatten the tensors to get rid of the time dimension
+    predicted_params = predicted_params.view(-1, predicted_params.shape[-1])
+    y_true = y_true.flatten()
 
     # First: compute the metric per threshold for all the samples
     # We cannot assume inverse_CDF to be vectorized, so we loop over the thresholds
     # and the samples
     all_measures = []
     for threshold in thresholds:
-        measure = []
-        for i in range(predicted_params.shape[0]):
-            # Compute the quantiles from the predicted parameters
-            y_pred = inverse_CDF(predicted_params[i], threshold, **kwargs)
-            # Compute the MAE
-            measure.append(metric_func(y_true[i], y_pred))
-        measure = np.mean(measure)
+        y_pred = inverse_CDF(predicted_params, threshold, **kwargs)
+        measure = metric_func(y_true, y_pred).mean()
         if metric == "rmse":
-            measure = np.sqrt(measure)
+            measure = torch.sqrt(measure)
         all_measures.append(measure)
     # Create a DataFrame with the results
     df = pd.DataFrame({"threshold": thresholds, metric: all_measures})
@@ -79,23 +69,20 @@ def metric_per_threshold(metric, y_true, predicted_params, inverse_CDF, threshol
     # Second: compute the metric per threshold for each quantile
     if y_true_quantiles is not None:
         # Compute the quantiles of the true values
-        y_true_quant_values = np.quantile(y_true, y_true_quantiles)
+        y_true_quant_values = torch.quantile(y_true, torch.tensor(y_true_quantiles))
         # Create a DataFrame with the results
         for tau, q in zip(y_true_quantiles, y_true_quant_values):
             # Select the samples that above the quantile q
-            q_idx = np.where(y_true >=  q)[0]
+            condition = y_true >= q
+            y_true_subset = y_true[condition]
+            predicted_params_subset = predicted_params[condition]
             # Compute the metric  per threshold
             q_measures = []
             for threshold in thresholds:
-                measure = []
-                for i in q_idx:
-                    # Compute the quantiles from the predicted parameters
-                    y_pred = inverse_CDF(predicted_params[i], threshold, **kwargs)
-                    # Compute the metric
-                    measure.append(metric_func(y_true[i], y_pred))
-                measure = np.mean(measure)
+                y_pred = inverse_CDF(predicted_params_subset, threshold, **kwargs)
+                measure = metric_func(y_true_subset, y_pred).mean()
                 if metric == "rmse":
-                    measure = np.sqrt(measure)
+                    measure = torch.sqrt(measure)
                 q_measures.append(measure)
             df[f"{metric}_{tau}"] = q_measures
     return df
