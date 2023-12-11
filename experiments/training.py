@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
-    trainer = pl.Trainer(accelerator='gpu', precision="bf16-mixed",
+    trainer = pl.Trainer(accelerator='gpu', precision=training_cfg['precision'],
                          max_epochs=training_cfg['epochs'], logger=wandb_logger,
                          callbacks=[ModelCheckpoint(monitor='val_loss', mode='min')])
     trainer.fit(model, train_loader, val_loader)
