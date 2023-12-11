@@ -3,8 +3,9 @@ Implements a function to assemble the dataset for the experiment.
 """
 import torch
 from tasks.intensity import intensity_dataset
-from data_processing.formats import SuccessiveStepsDataset, datacube_to_tensor
+from data_processing.custom_dataset import SuccessiveStepsDataset
 from data_processing.datasets import load_hursat_b1, load_era5_patches
+from utils.datacube import datacube_to_tensor
 from utils.train_test_split import train_val_test_split
 from utils.utils import hours_to_sincos
 
