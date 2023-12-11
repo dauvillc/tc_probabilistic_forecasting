@@ -43,15 +43,16 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a training step.
         """
-        past_variables, past_data, target_variables = batch
-        prediction = self.forward(past_variables, past_data)
+        past_variables, past_datacube, future_variables, future_datacube = batch
+        future_variables = future_variables['INTENSITY']
+        prediction = self.forward(past_variables, past_datacube)
         # Compute the loss
-        loss = self.loss_function(prediction, target_variables)
+        loss = self.loss_function(prediction, future_variables)
         # Log the loss
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         # Compute the metrics
         for name, metric in self.metrics.items():
-            self.log("train_" + name, metric(prediction, target_variables),
+            self.log("train_" + name, metric(prediction, future_variables),
                      on_step=False, on_epoch=True)
         return loss
 
@@ -59,15 +60,16 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a validation step.
         """
-        past_variables, past_data, target_variables = batch
-        prediction = self.forward(past_variables, past_data)
+        past_variables, past_datacube, future_variables, future_datacube = batch
+        future_variables = future_variables['INTENSITY']
+        prediction = self.forward(past_variables, past_datacube)
         # Compute the loss
-        loss = self.loss_function(prediction, target_variables)
+        loss = self.loss_function(prediction, future_variables)
         # Log the loss
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         # Compute the metrics
         for name, metric in self.metrics.items():
-            self.log("val_" + name, metric(prediction, target_variables),
+            self.log("val_" + name, metric(prediction, future_variables),
                      on_step=False, on_epoch=True)
         return loss
 
@@ -75,16 +77,20 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a prediction step.
         """
-        past_variables, past_data, target_variables = batch
-        prediction = self.forward(past_variables, past_data)
+        past_variables, past_datacube, future_variables, future_datacube = batch
+        prediction = self.forward(past_variables, past_datacube)
         return prediction
 
     def forward(self, past_variables, past_data):
         """
         Makes a prediction for the given input.
         """
+        # Concatenate the past variables into a single tensor
+        past_variables = torch.cat(list(past_variables.values()), dim=1)
         # Project the variables into a datacube
         projected_vars = self.projection_model(past_variables)
+        # Concatenate all the datacubes into a single tensor
+        past_data = torch.cat(list(past_data.values()), dim=1)
         # Make the prediction on the sum of the past data and the projected variables
         prediction = self.prediction_model(past_data + projected_vars)
         return prediction

@@ -3,7 +3,7 @@ Implements a function to assemble the dataset for the experiment.
 """
 import torch
 from tasks.intensity import intensity_dataset
-from data_processing.custom_dataset import SuccessiveStepsDataset
+from data_processing.custom_dataset_v2 import SuccessiveStepsDataset
 from data_processing.datasets import load_hursat_b1, load_era5_patches
 from utils.datacube import datacube_to_tensor
 from utils.train_test_split import train_val_test_split
@@ -85,16 +85,16 @@ def load_dataset(cfg, input_variables, output_variables):
     train_patches = patches[train_index]
     val_patches = patches[val_index]
 
-    # Create the train and validation datasets. For the validation dataset,
-    # we need to normalise the data using the statistics from the train dataset.
-    yield_input_variables = len(input_variables) > 0
-    train_dataset = SuccessiveStepsDataset(train_trajs, train_patches, past_steps, future_steps,
-                                           input_variables, output_variables,
-                                           yield_input_variables=yield_input_variables)
-    val_dataset = SuccessiveStepsDataset(val_trajs, val_patches, past_steps, future_steps,
-                                         input_variables, output_variables,
-                                         yield_input_variables=yield_input_variables,
-                                         normalise_from=train_dataset)
+    # Create the train and validation datasets.
+    train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, output_variables,
+                                           {input_data: train_patches}, [input_data], [],
+                                           past_steps, future_steps)
+    val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, output_variables,
+                                         {input_data: val_patches}, [input_data], [],
+                                         past_steps, future_steps)
+    # Normalize the data. For the validation dataset, we use the mean and std of the training dataset.
+    train_dataset.normalize_inputs()
+    val_dataset.normalize_inputs(other_dataset=train_dataset)
     # Create the train and validation data loaders
     batch_size = cfg['training_settings']['batch_size']
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)

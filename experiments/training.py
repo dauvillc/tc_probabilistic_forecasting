@@ -128,9 +128,9 @@ if __name__ == "__main__":
     metrics = distrib.metrics
 
     # Initialize the model
-    patch_size = train_dataset.patch_size()
+    patch_size = train_dataset.patch_size("era5")
     datacube_size = (past_steps,) + patch_size
-    channels = train_dataset.datacube_channels()
+    channels = train_dataset.datacube_channels("era5")
     # The number of scalar variables the model receives is the number of variables
     # (e.g. 2 for lat/lon) times the number of past steps
     num_input_variables = len(input_variables) * past_steps

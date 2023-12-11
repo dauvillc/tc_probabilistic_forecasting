@@ -65,9 +65,9 @@ if __name__ == "__main__":
     # Create the model architecture
     # We need to re-create the architecture, as it is not created within the LightningModule.
     # Once we have recreated it, we can load the weights from the checkpoint.
-    patch_size = train_dataset.patch_size()
+    patch_size = train_dataset.patch_size('era5')
     datacube_size = (past_steps,) + patch_size
-    datacube_channels = train_dataset.datacube_channels()
+    datacube_channels = train_dataset.datacube_channels('era5')
     num_input_variables = len(input_variables) * past_steps
     model = create_model(datacube_size, datacube_channels, num_input_variables,
                          future_steps, distrib.n_parameters, hidden_channels=model_cfg['hidden_channels'])
@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # ====== EVALUATION ====== #
     # Make predictions on the validation set
-    y_true = val_dataset.future_target
+    y_true = torch.cat([y['INTENSITY'].cpu().detach() for _, _, y, _ in val_loader], dim=0)
     trainer = pl.Trainer(accelerator="gpu", max_epochs=1)
     pred = torch.cat([p.cpu().detach() for p in trainer.predict(model, val_loader)], dim=0)
 
