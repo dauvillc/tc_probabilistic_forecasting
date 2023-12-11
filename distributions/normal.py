@@ -11,11 +11,11 @@ def normal_crps(mu, sigma, y):
 
     Parameters
     ----------
-    mu : torch.Tensor of shape (N, 1)
+    mu : torch.Tensor
         The predicted mean for each sample.
-    sigma : torch.Tensor of shape (N, 1)
+    sigma : torch.Tensor
         The predicted standard deviation for each sample.
-    y : torch.Tensor of shape (N, 1)
+    y : torch.Tensor
         The true values for each sample.
 
     Returns
