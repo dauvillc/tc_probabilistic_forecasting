@@ -23,20 +23,18 @@ class StormPredictionModel(pl.LightningModule):
         The model to use to project the scalar variables into a datacube.
         Should take as input a tensor of shape (N, D * n_input_vars)
         and return a tensor of shape (N, C', D, H, W).
-    loss_function : callable, optional
-        The loss function to use. If None, the mean squared error is used.
+    loss_function : callable
+        The loss function to use.
     metrics: Mapping of str to callable, optional
         The metrics to track. The keys are the names of the metrics, and the values
         are functions that take as input the output of the model and the target,
         and return a scalar.
     """
-    def __init__(self, prediction_model, projection_model, loss_function=None, metrics=None):
+    def __init__(self, prediction_model, projection_model, loss_function, metrics=None):
         super().__init__()
         self.prediction_model = prediction_model
         self.projection_model = projection_model
         self.loss_function = loss_function
-        if loss_function is None:
-            self.loss_function = torch.nn.MSELoss(reduction="mean")
         self.metrics = metrics if metrics is not None else {}
 
     def training_step(self, batch, batch_idx):

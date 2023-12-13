@@ -11,7 +11,7 @@ from utils.utils import hours_to_sincos
 
 
 
-def load_dataset(cfg, input_variables, output_variables):
+def load_dataset(cfg, input_variables, tasks):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
@@ -22,8 +22,11 @@ def load_dataset(cfg, input_variables, output_variables):
         The configuration of the experiment.
     input_variables : list of str
         The list of the input variables.
-    output_variables : list of str
-        The list of the variables to predict.
+    tasks: Mapping of str to Mapping
+        The tasks to perform. The keys are the task names, and the values are
+        mappings containing the task parameters, including:
+        - 'output_variables': list of str
+            The list of the output variables.
 
     Returns
     -------
@@ -72,28 +75,30 @@ def load_dataset(cfg, input_variables, output_variables):
                                                               train_size=0.6,
                                                               val_size=0.2,
                                                               test_size=0.2)
+    # Trajectory
     train_trajs = all_trajs.iloc[train_index]
     val_trajs = all_trajs.iloc[val_index]
     test_trajs = all_trajs.iloc[test_index]
+    # Patches
+    train_patches = patches[train_index]
+    val_patches = patches[val_index]
 
     print(f"Number of trajectories in the training set: {len(train_trajs)}")
     print(f"Number of trajectories in the validation set: {len(val_trajs)}")
     print(f"Number of trajectories in the test set: {len(test_trajs)}")
 
     # ====== DATASET CREATION ====== #
-    # Split the patches into train, validation and test sets
-    train_patches = patches[train_index]
-    val_patches = patches[val_index]
-
     # Create the train and validation datasets.
-    train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, output_variables,
+    train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tasks,
                                            {input_data: train_patches}, [input_data], [],
                                            past_steps, future_steps)
-    val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, output_variables,
+    val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tasks,
                                          {input_data: val_patches}, [input_data], [],
                                          past_steps, future_steps)
     # Normalize the data. For the validation dataset, we use the mean and std of the training dataset.
+    # The normalization constants are saved in the tasks dictionary.
     train_dataset.normalize_inputs()
+    train_dataset.normalize_outputs(save_statistics=True)
     val_dataset.normalize_inputs(other_dataset=train_dataset)
     # Create the train and validation data loaders
     batch_size = cfg['training_settings']['batch_size']

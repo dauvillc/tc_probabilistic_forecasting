@@ -1,18 +1,25 @@
 experiment:
-  name: e5_CQR
-  # Output distribution:
-  # - "deterministic" (MSE regression)
-  # - "normal" (Normal distribution)
-  # - "qc" (quantiles composite)
-  distribution: qc 
+  name: intensity_normal_with_norm
   # Type of input data. Can be "era5", "hursat" or "era5+hursat"
   input_data: era5
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
   future_steps: 4
+tasks:
+  # Parameters specific to each task
+  # Output distribution:
+  # - "deterministic" (MSE loss)
+  # - "normal"
+  # - "qc" (quantiles composite)
+  intensity:
+    output_variables: ['INTENSITY']
+    distribution: normal
+  # location:
+    # output_variables: ['LAT', 'LON']
+    # distribution: deterministic
 training_settings:
-  epochs: 100
+  epochs: 50
   batch_size: 128
   # Trainer precision, usually "bf16-mixed"
   precision: bf16-mixed 

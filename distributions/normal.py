@@ -45,8 +45,14 @@ def normal_mae(predicted_params, y):
 class NormalDistribution:
     """
     Object that contains the loss function, cdf and metrics for normal distributions.
+
+    Parameters
+    ----------
+    tasks: dict
+        Pointer to the tasks dictionary, which contains the normalization constants.
     """
-    def __init__(self):
+    def __init__(self, tasks):
+        self.tasks = tasks
         self.n_parameters = 2
 
         # Metrics
@@ -108,6 +114,36 @@ class NormalDistribution:
         # Compute the CRPS
         loss += normal_crps(mu, sigma, y)
         return loss.mean()
+
+    def denormalize(self, predicted_params, task):
+        """
+        De-normalizes the predicted parameters of the distribution.
+
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, 2)
+            The predicted parameters of the normal distribution for each sample and time step.
+        task : str
+            The name of the task.
+
+        Returns
+        -------
+        torch.Tensor of shape (N, T, 2)
+            The de-normalized parameters.
+        """
+        # Get the normalization constants from the tasks dictionary
+        means = torch.tensor(self.tasks[task]['means'].values, dtype=torch.float32, device=predicted_params.device)
+        stds = torch.tensor(self.tasks[task]['stds'].values, dtype=torch.float32, device=predicted_params.device)
+        # The normalization constants are of shape (T,) but the predicted means and stds
+        # are of shape (N, T), so we need to add a new dimension to the constants.
+        means = means.unsqueeze(0)
+        stds = stds.unsqueeze(0)
+        # De-normalize the predictions by rescaling the predicted mean and std
+        # Mean of the distribution:
+        predicted_params[:, :, 0] = predicted_params[:, :, 0] * stds + means
+        # Standard deviation of the distribution:
+        predicted_params[:, :, 1] = predicted_params[:, :, 1] * stds
+        return predicted_params
         
     def hyperparameters(self):
         return {}
