@@ -11,7 +11,8 @@ import yaml
 
 
 # List of variables to keep from the dataset
-_SELECTED_VARS_ = ['SID', 'NAME', 'ISO_TIME', 'LAT', 'LON', 'BASIN', 'TRACK_TYPE', 'USA_WIND']
+_SELECTED_VARS_ = ['SID', 'NAME', 'ISO_TIME', 'LAT', 'LON', 'BASIN', 'TRACK_TYPE', 'USA_WIND',
+                   'USA_R34_NE', 'USA_R34_SE', 'USA_R34_SW', 'USA_R34_NW']
 
 
 if __name__ == "__main__":
@@ -69,6 +70,10 @@ if __name__ == "__main__":
     ibtracs_df['USA_WIND'] = ibtracs_df['USA_WIND'] * 0.514444
     # Convert the longitude from [-180, 180) to [0, 350) for consistency with ERA5.
     ibtracs_df['LON'] = ibtracs_df['LON'].apply(lambda x: x + 360 if x < 0 else x)
+
+    # Convert the 34 knots wind radii from nautical miles to km.
+    for direction in ['NE', 'SE', 'SW', 'NW']:
+        ibtracs_df['USA_R34_' + direction] = ibtracs_df['USA_R34_' + direction] * 1.852
 
     # Save the preprocessed dataset.
     ibtracs_df.to_csv(output_path, index=False)
