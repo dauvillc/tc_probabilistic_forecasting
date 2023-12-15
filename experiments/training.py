@@ -67,6 +67,8 @@ def create_tasks(tasks_cfg):
             tasks[task]['output_size'] = len(params['output_variables'])
         else:
             tasks[task]['output_size'] = distrib.n_parameters
+        # The metrics
+        tasks[task]['metrics'] = distrib.metrics
     return tasks
 
 
@@ -99,12 +101,6 @@ if __name__ == "__main__":
     # Log the config and hyperparameters
     wandb_logger.log_hyperparams(cfg)
     wandb_logger.log_hyperparams({"input_variables": input_variables})
-    # Log the normalization constants
-    input_means, input_stds, tasks_stats = train_dataset.get_normalization_constants()
-    wandb_logger.log_hyperparams({"input_means": input_means})
-    wandb_logger.log_hyperparams({"input_stds": input_stds})
-    wandb_logger.log_hyperparams(tasks_stats)
-
 
     # ====== MODELS CREATION ====== #
     # Initialize the model

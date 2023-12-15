@@ -38,7 +38,8 @@ class StormPredictionModel(pl.LightningModule):
         - 'loss_function': callable
             The loss function for the task.
     """
-    def __init__(self, datacube_shape, num_input_variables, future_steps, tasks):
+    def __init__(self, datacube_shape, num_input_variables, future_steps,
+                 tasks):
         super().__init__()
         self.tabular_tasks = tasks
         self.datacube_shape = datacube_shape
@@ -91,6 +92,14 @@ class StormPredictionModel(pl.LightningModule):
         # Compute the total loss
         total_loss = sum(losses.values())
         self.log("val_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
+
+        # Compute the metrics for each task
+        for task in self.tabular_tasks:
+            for metric_name, metric in self.tabular_tasks[task]['metrics'].items():
+                # Compute the metric in the original scale
+                metric_value = metric(predictions[task], future_variables[task])
+                self.log(f"val_{metric_name}_{task}", metric_value, on_step=False, on_epoch=True)
+
         return total_loss
  
     def forward(self, batch, batch_idx):
