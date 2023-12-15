@@ -181,3 +181,30 @@ def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
         print(f"Surface patches memory footprint: {surface_patches.nbytes / 1e9} GB.")
 
     return atmo_patches, surface_patches
+
+
+def load_tcir():
+    """
+    Loads the TCIR dataset: https://www.csie.ntu.edu.tw/~htlin/program/TCIR/
+    The dataset must have been preprocessed using scripts/preprocess_tcir.py first.
+    It includes both the images and ground truth labels.
+
+    Returns
+    -------
+    tcir_info: pandas DataFrame containing the contextual information and the labels.
+    tcir_datacube: xarray DataArray of dimensions (sid_time, lat, lon, variable),
+        containing the TCIR images.
+    """
+    # Retrieve the paths from config.yml
+    with open("config.yml") as file:
+        config = yaml.safe_load(file)
+    path_datacube = config['paths']["tcir_datacube_preprocessed"]
+    path_info = config['paths']["tcir_info_preprocessed"]
+    # Load the datacube
+    tcir_datacube = xr.open_dataarray(path_datacube)
+    # Load the info
+    tcir_info = pd.read_csv(path_info, parse_dates=["ISO_TIME"])
+    # Set the index to sid_time
+    tcir_datacube = tcir_datacube.set_index(sid_time=['sid', 'time'])
+
+    return tcir_info, tcir_datacube
