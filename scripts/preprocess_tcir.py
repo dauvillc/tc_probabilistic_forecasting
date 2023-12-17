@@ -36,6 +36,18 @@ if __name__ == '__main__':
     # Convert ISO_TIME to datetime
     data_info['ISO_TIME'] = pd.to_datetime(data_info['ISO_TIME'], format='%Y%m%d%H')
 
+    # === TEMPORAL SELECTION ===
+    # The temporal resolution in TCIR is 3 hours, but the best-track data's original resolution
+    # (such as ATCF given by the JTWC) is 6 hours. One point out of two was linearly interpolated
+    # (which is very common with best-track data), which would make the problem artificially easier.
+    # To avoid this, we'll only keep the points that are multiples of 6 hours.
+    # Select the points in the info
+    data_info = data_info[data_info['ISO_TIME'].dt.hour.isin([0, 6, 12, 18])]
+    # Select the corresponding entries in the datacube
+    datacube = datacube.isel(phony_dim_4=data_info.index)
+    # Reset the index of data_info so that it matches datacube.isel
+    data_info = data_info.reset_index()
+
     # === DATACUBE PREPROCESSING ===
     # Rename the dimensions
     datacube = datacube.rename({"phony_dim_4": "sid_time",
