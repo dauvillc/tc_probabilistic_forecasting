@@ -1,23 +1,10 @@
-name: torch
+name: base
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
-  - pytorch
+  - python=3.10
+  - conda==23.3.1
+  - conda-libmamba-solver==23.3.0
+  - mamba==1.4.2
   - pip
-  - xarray
-  - ca-certificates
-  - openssl
-  - netcdf4
-  - matplotlib
-  - certifi
-  - seaborn
-  - plotly
-  - ipywidgets
-  - scikit-learn
-  - torchvision
-  - chardet
-  - pyyaml
-  - dask
-  - beautifulsoup4
-  - lightning
+prefix: /cdauvill/home/miniforge3
