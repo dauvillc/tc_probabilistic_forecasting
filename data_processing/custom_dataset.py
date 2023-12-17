@@ -1,6 +1,7 @@
 """
-Clément Dauvilliers - 2023 10 18
-Implements functions to convert datacubes between different formats.
+Implements the SuccessiveStepsDataset class, which is a subclass of the
+torch.utils.data.Dataset class. This class is used to yield successive
+steps of a multiple time series, which can be either tabular data or images.
 """
 import pandas as pd
 import torch
@@ -8,152 +9,243 @@ import torch
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
     """
-    Dataset of successive steps of storm trajectories and datacubes.
-
-    Given a dataframe of storm trajectories and a datacube, and
-    a number of past steps p and future steps n,
-    yields tuples (past_traj, past_data, future_traj) where:
-        - past_traj is a pandas DataFrame with columns
-            (V0_-p+1,V0_-p+2,...,V0_0, V1_-p+1,V1_-p+2,...,V1_0, Vv_-p+1,Vv_-p+2,...,Vv_0)
-            where Vi for i in [0, v] are the variables of the trajectories (e.g. lat, lon, intensity, ...).
-        - past_data is a torch tensor of dimensions (C, Time, H, W).
-        - future_traj is a pandas DataFrame with columns
-            (V0_1,V0_2,...,V0_n, V1_1,V1_2,...,V1_n, Vv_1,Vv_2,...,Vv_n)
+    The class receives a set of time series and returns batches of successive
+    steps of it. The time series can be either tabular data or datacubes.
+    The class receives a set of input time series, a set of input datacubes,
+    a set of output time series and a set of output datacubes.
+    If X is an input time series and Y is an output time series, and P is the
+    number of past steps and T is the number of future steps, the class returns
+    batches of shape (batch_size, P, X.shape[1]) and (batch_size, T, Y.shape[1]).
+    If X is an input datacube and Y is an output datacube, the class returns
+    batches of shape (batch_size, P, *X.shape[1:]) and (batch_size, T, *Y.shape[1:]).
 
     Parameters
     ----------
-    trajectories : pandas DataFrame
-        Dataframe of storm trajectories, with columns (SID, ISO_TIME, V0, V1, ..., Vv).
-    datacube : torch tensor of dimensions (sid_time, channels, height, width).
-    past_steps : int
-        Number of past steps to include in the input.
-    future_steps : int
-        Number of future steps to include in the output.
-    input_variables : list of str, optional
-        List of variables to include in the input. If None, all variables are included.
-    target_variables : list of str, optional
-        List of variables to include in the target. If None, all variables are included.
-    target_to_tensor: bool, optional
-        If True, converts the target to a torch tensor. The default is True.
-    yield_input_variables: bool, optional
-        If True (default), yields the past variables alongside the past datacube. If False,
-        returns None, input_datacube, target_variables.
-    normalise_inputs: bool, optional
-        If True, normalises the inputs (datacube and past variable). The default is True.
-        The datacube is normalised channel-wise.
-    normalise_from: SuccessiveStepsDataset, optional
-        If not None, normalises the inputs using the mean and standard deviation of the
-        datacube and past variables of the given dataset. The default is None.
+    trajectories: pandas.DataFrame
+        The input time series. Must at least contain the columns "SID", "ISO_TIME", and
+        the columns specified in input_columns and output_columns.
+    input_columns: list of str
+        The columns of the input time series, to be taken from trajectories.
+    output_tabular_tasks: Mapping of str to Mapping
+        The output tabular tasks. The keys are the names of the tasks, and the values
+        are the parameters of the task, including at least:
+            - 'output_variables': list of str
+                The variables to predict.
+    datacubes: Mapping of str to torch.Tensor
+        The input datacubes. The keys are the names of the datacubes and the values are
+        the datacubes themselves. Each datacube must be of shape (N, C, H, W), where N 
+        is the number of samples, one for each pair (SID, ISO_TIME).
+    input_datacubes: list of str
+        Which datacubes to use as input. The names must be keys of datacubes.
+    output_datacubes: list of str
+        Which datacubes to use as output. The names must be keys of datacubes.
+    past_steps: int
+        The number of past steps to return.
+    future_steps: int
+        The number of future steps to return.
     """
-    def __init__(self, trajectories, datacube, past_steps, future_steps,
-                 input_variables=None, target_variables=None,
-                 target_to_tensor=True, yield_input_variables=True,
-                 normalise_inputs=True, normalise_from=None):
-        # Reset the index of the trajectories to make sure it matches that of
-        # the datacube, and assert they have the same length.
-        trajectories = trajectories.reset_index(drop=True)
+    def __init__(self, trajectories, input_columns, output_tabular_tasks, datacubes,
+                 input_datacubes, output_datacubes, past_steps, future_steps):
         self.trajectories = trajectories
-        assert len(trajectories) == len(datacube), "The trajectories and the datacube have different lengths."
-        self.datacube = datacube
+        self.input_columns = input_columns
+        self.output_tabular_tasks = output_tabular_tasks
+        self.datacubes = datacubes
+        self.input_datacubes = input_datacubes
+        self.output_datacubes = output_datacubes
         self.past_steps = past_steps
         self.future_steps = future_steps
-        self.target_to_tensor = target_to_tensor
-        self.yield_input_variables = yield_input_variables
-        self.normalise_inputs = normalise_inputs
+        # The output variables are the variables that are included in at least one
+        # tabular task.
+        self.output_columns = set()
+        for task in self.output_tabular_tasks:
+            output_variables = self.output_tabular_tasks[task]['output_variables']
+            self.output_columns.update(output_variables)
+        self.output_columns = list(self.output_columns)
 
-        # Assert there are no missing values in the trajectories
+        # Reset the indices of the trajectories dataframe so that trajectories[i] matches
+        # the i-th sample in the datacubes.
+        self.trajectories.reset_index(inplace=True, drop=True)
+        for datacube in self.datacubes.values():
+            assert len(self.trajectories) == datacube.shape[0], \
+                "The number of samples in the trajectories dataframe and in the datacubes must match."
         assert not trajectories.isna().any().any(), "There are missing values in the trajectories."
 
-        # Retrieve the names of all variables in the trajectories
-        self.variables = [col for col in trajectories.columns if col not in ['SID', 'ISO_TIME']]
-        self.input_variables = self.variables if input_variables is None else input_variables
-        self.target_variables = self.variables if target_variables is None else target_variables
+        # Every manipulation of the trajectories will be done separately for each storm.
+        grouped_trajs = self.trajectories.groupby('SID')
+        # Create a DataFrame for the input time series. For each input variable V_t, it includes
+        # the columns V_{-P+1}, ..., V_{0}.
+        self.input_trajectories = pd.DataFrame()
+        for var in self.input_columns:
+            for i in range(self.past_steps):
+                self.input_trajectories[f"{var}_{-i}"] = grouped_trajs[var].shift(i)
+        # The first P-1 rows of each storm are NaN since there are no previous steps.
+        self.input_trajectories.dropna(inplace=True)
 
-        # If normalise_inputs is True, normalise the datacube and the past variables
-        if normalise_inputs:
-            if normalise_from is None:
-                # Compute the mean and standard deviation of each channel of the datacube,
-                # which has shape (sid_time, height, width, channels)
-                self.input_datacube_mean = self.datacube.mean(dim=(0, 1, 2))
-                self.input_datacube_std = self.datacube.std(dim=(0, 1, 2))
-                # Compute the mean and standard deviation of each input variable
-                self.input_variables_mean = trajectories[self.input_variables].mean()
-                self.input_variables_std = trajectories[self.input_variables].std()
-            else:
-                # Use the mean and standard deviation of the given dataset
-                self.input_datacube_mean = normalise_from.input_datacube_mean
-                self.input_datacube_std = normalise_from.input_datacube_std
-                self.input_variables_mean = normalise_from.input_variables_mean
-                self.input_variables_std = normalise_from.input_variables_std
-            # Normalise the datacube
-            self.datacube = (self.datacube - self.input_datacube_mean) / self.input_datacube_std
-            # Normalise the input variables
-            trajectories[self.input_variables] -= self.input_variables_mean
-            trajectories[self.input_variables] /= self.input_variables_std
+        # Create a DataFrame for the output time series. For each output variable V_t, it includes
+        # the columns V_{1}, ..., V_{T}.
+        self.output_trajectories = pd.DataFrame()
+        for var in self.output_columns:
+            for i in range(1, self.future_steps + 1):
+                self.output_trajectories[f"{var}_{i}"] = grouped_trajs[var].shift(-i)
+        # The last T rows of each storm are NaN since there are no future steps.
+        self.output_trajectories.dropna(inplace=True)
 
-        # Create an empty dataframe to store the past trajectories
-        past_trajs = pd.DataFrame({'SID': trajectories['SID'], 'ISO_TIME': trajectories['ISO_TIME']})
-        # For every input variable, add a column for each past step
-        for var in self.input_variables:
-            for i in range(past_steps - 1, -1, -1):
-                past_trajs[f'{var}_{-i}'] = trajectories.groupby('SID')[var].shift(i)
-        # The first past_steps rows of each storm contain NaN values, as there are not enough past steps
-        past_trajs = past_trajs.dropna()
+        # Since we removed the first P-1 rows and the last T rows, we need to retain only the intersection
+        # of the input and output time series' indices.
+        indices = self.input_trajectories.index.intersection(self.output_trajectories.index)
+        self.input_trajectories = self.input_trajectories.loc[indices]
+        self.output_trajectories = self.output_trajectories.loc[indices]
+        self.trajectory_indices = indices
+        # Remark: at this point, the indices of self.input_trajectories and self.output_trajectories
+        # are the same and match the indices of the datacubes, meaning that self.input_trajectories[i]
+        # refers to the same storm and time as datacube[i] for each datacube.
+        # However, the trajectories' indices have gaps at the first P rows and the last T rows of each storm.
+        # These gaps are not present in the datacubes' indices, on purpose: if input_trajectories[i] refers to
+        # a storm at time t, then datacube[i - P + 1] refers to the same storm at time t - P + 1, and datacube[i + T]
+        # refers to the same storm at time t + T.
 
-        # Do the same for the future trajectories 
-        future_trajs = pd.DataFrame({'SID': trajectories['SID'], 'ISO_TIME': trajectories['ISO_TIME']})
-        for var in self.target_variables:
-            for i in range(1, future_steps + 1):
-                future_trajs[f'{var}_{i}'] = trajectories.groupby('SID')[var].shift(-i)
-        # The last future_steps rows of each storm contain NaN values, as there are not enough future steps
-        future_trajs = future_trajs.dropna()
+    def normalize_inputs(self, other_dataset=None):
+        """
+        Normalizes the input data (variables and datacubes), by subtracting the mean
+        and dividing by the standard deviation. For the datacubes, the statistics are
+        computed per channel.
+        If other_dataset is not None, the statistics are not computed but taken from
+        other_dataset.
 
-        # Join the past and future trajectories on their index, and NOT on the SID and ISO_TIME columns.
-        # This is to conserve the matching between the trajectories and the datacube's indices.
-        self.target = past_trajs.join(future_trajs.drop(columns=['SID', 'ISO_TIME']),
-                                           how='inner', sort=True)
-        # Drop the SID and ISO_TIME columns from the target, as we don't want to yield them
-        # along with the variables.
-        self.target = self.target.drop(columns=['SID', 'ISO_TIME'])
-        # Divide the target into past and future trajectories
-        self.past_target = self.target[[f'{var}_{i}' for var in input_variables
-                                                     for i in range(-past_steps + 1, 1)]]
-        self.future_target = self.target[[f'{var}_{i}' for var in target_variables
-                                                       for i in range(1, future_steps + 1)]]
+        Parameters
+        ----------
+        other_dataset: SuccessiveStepsDataset, optional
+            Dataset containing the statistics to use for normalisation.
+        """
+        if other_dataset is None:
+            # Compute the statistics from the input variables.
+            self.input_variable_means = self.input_trajectories.mean()
+            self.input_variable_stds = self.input_trajectories.std()
+            # Compute the statistics from the input datacubes.
+            self.input_datacube_means = {name: self.datacubes[name].mean(dim=(0, 2, 3), keepdim=True)
+                                            for name in self.input_datacubes}
+            self.input_datacube_stds = {name: self.datacubes[name].std(dim=(0, 2, 3), keepdim=True)
+                                           for name in self.input_datacubes}
+        else:
+            # Take the statistics from other_dataset.
+            self.input_variable_means = other_dataset.input_variable_means
+            self.input_variable_stds = other_dataset.input_variable_stds
+            self.input_datacube_means = other_dataset.input_datacube_means
+            self.input_datacube_stds = other_dataset.input_datacube_stds
+        # Normalize the input variables.
+        self.input_trajectories = (self.input_trajectories - self.input_variable_means) / self.input_variable_stds
+        # Normalize the input datacubes.
+        for name in self.input_datacubes:
+            self.datacubes[name] = (self.datacubes[name] - self.input_datacube_means[name]) / self.input_datacube_stds[name]
 
-        # At this point, the index of target correspond to the index of same SID and ISO_TIME in the
-        # datacube. To avoid losing this matching (due to an operation or a reset_index), we'll save that
-        # index separately.
-        self.target_index = self.target.index.values
 
-        # Convert the target to a torch tensor if needed
-        if target_to_tensor:
-            self.past_target = torch.tensor(self.past_target.to_numpy(), dtype=torch.float32)
-            self.future_target = torch.tensor(self.future_target.to_numpy(), dtype=torch.float32)
+    def normalize_outputs(self, other_dataset=None, save_statistics=False):
+        """
+        Normalizes the output data (variables and datacubes), by subtracting the mean
+        and dividing by the standard deviation. For the datacubes, the statistics are
+        computed per channel.
+        The statistics are stored in the output_tabular_tasks dictionary.
 
+        Parameters
+        ----------
+        other_dataset: SuccessiveStepsDataset, optional
+            If not None, the statistics are not computed but taken from other_dataset.
+        save_statistics: bool, optional
+            If True, the statistics are saved in the tasks dictionary.
+        """
+        if other_dataset is None:
+            # Compute the statistics from the output variables.
+            self.output_variable_means = self.output_trajectories.mean()
+            self.output_variable_stds = self.output_trajectories.std()
+            # Compute the statistics from the output datacubes.
+            self.output_datacube_means = {name: self.datacubes[name].mean(dim=(0, 2, 3), keepdim=True)
+                                             for name in self.output_datacubes}
+            self.output_datacube_stds = {name: self.datacubes[name].std(dim=(0, 2, 3), keepdim=True)
+                                            for name in self.output_datacubes}
+        else:
+            # Take the statistics from other_dataset.
+            self.output_variable_means = other_dataset.output_variable_means
+            self.output_variable_stds = other_dataset.output_variable_stds
+            self.output_datacube_means = other_dataset.output_datacube_means
+            self.output_datacube_stds = other_dataset.output_datacube_stds
+        # Normalize the output variables.
+        self.output_trajectories = (self.output_trajectories - self.output_variable_means) / self.output_variable_stds
+        # Normalize the output datacubes.
+        for name in self.output_datacubes:
+            self.datacubes[name] = (self.datacubes[name] - self.output_datacube_means[name]) / self.output_datacube_stds[name]
+        # Save the statistics in the tasks dictionary.
+        if save_statistics:
+            for task in self.output_tabular_tasks:
+                output_variables = self.get_task_output_variables(task)
+                self.output_tabular_tasks[task]['means'] = self.output_variable_means[output_variables]
+                self.output_tabular_tasks[task]['stds'] = self.output_variable_stds[output_variables]
+
+    def get_normalization_constants(self):
+        """
+        Returns the normalization constants as a triple
+        (input_variable_means, input_variable_stds, task_statistics).
+        """
+        # Retrieve the normalization constants for the output variables.
+        task_statistics = {}
+        for task in self.output_tabular_tasks:
+            output_variables = self.get_task_output_variables(task)
+            task_statistics[task] = {'means': self.output_variable_means[output_variables],
+                                     'stds': self.output_variable_stds[output_variables]}
+        return self.input_variable_means, self.input_variable_stds, task_statistics
 
     def __len__(self):
-        return len(self.target)
+        return len(self.trajectory_indices)
 
     def __getitem__(self, idx):
-        # Retrieve the past and future trajectories corresponding to the index
-        if self.target_to_tensor: 
-            past_traj = self.past_target[idx]
-            future_traj = self.future_target[idx]
-        else:
-            past_traj = self.past_target.iloc[idx]
-            future_traj = self.future_target.iloc[idx]
-        # Build the indices in the datacube that correspond to the past steps
-        past_indices = [self.target_index[idx] - i for i in range(self.past_steps + 1, 1, -1)]
-        # Select the datacube samples corresponding to the past steps
-        past_data = self.datacube[past_indices]
-        # Transpose the datacube to (C, Time, H, W) to be compatible with the input of a torch CNN
-        past_data = past_data.transpose(0, 1)
+        """
+        Returns the idx-th sample of the dataset, as a tuple
+        (input_time_series, input_datacubes, output_time_series, output_datacubes).
         
-        if self.yield_input_variables:
-            return past_traj, past_data, future_traj
-        else:
-            return None, past_data, future_traj
+        input_time_series is a Tensor of shape (batch_size, P * K), where K is the number of variables.
+        output_time_series is a Mapping of str to torch.Tensor, where the keys are the task names
+        and the values are torch.Tensors of shape (batch_size, T, K') where K' is the number of variables
+        in the task.
+
+        input_datacubes is a Mapping of str to torch.Tensor, where the keys are the names of the
+        input datacubes and the values are torch.Tensors of shape (batch_size, C, P, H, W). The same
+        applies to output_datacubes, but the shape of the torch.Tensors is (batch_size, C, T, H, W).
+        """
+        # Retrieve the input time series.
+        input_time_series = torch.tensor(self.input_trajectories.iloc[idx].values, dtype=torch.float32)
+
+        # Retrieve the output time series.
+        output_time_series = {}
+        for task in self.output_tabular_tasks:
+            # Group the output variables of the task into a single tensor.
+            output_variables = self.get_task_output_variables(task)
+            output_time_series[task] = torch.tensor(self.output_trajectories[output_variables].iloc[idx].values,
+                                                        dtype=torch.float32)
+
+        # Retrieve the index of the sample in the datacubes (i.e. the index of the storm at time t).
+        datacube_index = self.trajectory_indices[idx]
+
+        # Retrieve the input datacubes.
+        input_datacubes = {}
+        for name in self.input_datacubes:
+            datacube = self.datacubes[name][datacube_index - self.past_steps + 1: datacube_index + 1]
+            # Convert the datacube from shape (P, C, H, W) to (C, P, H, W), as expected by torch.
+            input_datacubes[name] = datacube.transpose(1, 0)
+
+        # Retrieve the output datacubes.
+        output_datacubes = {}
+        for name in self.output_datacubes:
+            datacube = self.datacubes[name][datacube_index + 1: datacube_index + 1 + self.future_steps]
+            output_datacubes[name] = datacube.transpose(1, 0)
+
+        return input_time_series, input_datacubes, output_time_series, output_datacubes
+    
+    def get_task_output_variables(self, task):
+        """
+        For a given task name, returns the list of the output variables
+        (VAR1_1, ..., VAR1_T, ..., VARK_1, ..., VARK_T).
+        """
+        return [f"{var}_{i}" for var in self.output_tabular_tasks[task]['output_variables']
+                for i in range(1, self.future_steps + 1)]
 
     def target_support(self, variable):
         """
@@ -162,15 +254,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         return self.trajectories[variable].min(), self.trajectories[variable].max()
 
-    def patch_size(self):
+    def input_datacube_shape(self, name):
         """
-        Returns the size of the datacube patches.
+        Returns the shape of a datacube used as input, as a tuple
+        (C, P, H, W).
         """
-        return self.datacube.shape[2:]
-    
-    def datacube_channels(self):
-        """
-        Returns the number of channels in the datacube.
-        """
-        return self.datacube.shape[1]
-
+        c, h, w = self.datacubes[name].shape[1:]
+        return c, self.past_steps, h, w

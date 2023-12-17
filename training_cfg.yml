@@ -1,7 +1,5 @@
 experiment:
-  name: intensity_normal_with_norm
-  # Type of input data. Can be "era5", "hursat" or "era5+hursat"
-  input_data: era5
+  name: test_tcir
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -14,12 +12,12 @@ tasks:
   # - "qc" (quantiles composite)
   intensity:
     output_variables: ['INTENSITY']
-    distribution: normal
-  # location:
-    # output_variables: ['LAT', 'LON']
-    # distribution: deterministic
+    distribution: normal 
+  location:
+    output_variables: ['LAT', 'LON']
+    distribution: deterministic
 training_settings:
-  epochs: 50
+  epochs: 10
   batch_size: 128
   # Trainer precision, usually "bf16-mixed"
   precision: bf16-mixed 
