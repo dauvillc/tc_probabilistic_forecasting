@@ -5,6 +5,7 @@ steps of a multiple time series, which can be either tabular data or images.
 """
 import pandas as pd
 import torch
+from torchvision.transforms import v2
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
@@ -103,6 +104,15 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # These gaps are not present in the datacubes' indices, on purpose: if input_trajectories[i] refers to
         # a storm at time t, then datacube[i - P + 1] refers to the same storm at time t - P + 1, and datacube[i + T]
         # refers to the same storm at time t + T.
+
+        # Create the random transformations to apply to the datacubes.
+        # The datacube is randomly rotated by angle between -180 and 179 degrees,
+        # and is then center-cropped to 64x64 pixels.
+        self.transforms = v2.Compose([
+            v2.RandomRotation(degrees=(-180, 179)),
+            v2.CenterCrop(64)
+        ])
+
 
     def normalize_inputs(self, other_dataset=None):
         """
@@ -237,6 +247,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             datacube = self.datacubes[name][datacube_index + 1: datacube_index + 1 + self.future_steps]
             output_datacubes[name] = datacube.transpose(1, 0)
 
+        # Apply the same transformations to the input and output datacubes.
+        transformed = self.transforms([input_datacubes, output_datacubes])
+        input_datacubes, output_datacubes = transformed[0], transformed[1]
+
         return input_time_series, input_datacubes, output_time_series, output_datacubes
     
     def get_task_output_variables(self, task):
@@ -259,5 +273,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         Returns the shape of a datacube used as input, as a tuple
         (C, P, H, W).
         """
-        c, h, w = self.datacubes[name].shape[1:]
+        # Retrieve the number of channels of the datacube:
+        c = self.datacubes[name].shape[1]
+        # Retrieve the size of the datacube after cropping:
+        h, w = self.transforms.transforms[1].size
         return c, self.past_steps, h, w
