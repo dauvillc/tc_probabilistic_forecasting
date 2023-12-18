@@ -37,15 +37,19 @@ class StormPredictionModel(pl.LightningModule):
             The number of values to predict for the task.
         - 'distrib_obj': Distribution object implementing loss_functio, metrics
             and optionally activation.
+    model_cfg: Mapping of str to Any
+        The model hyperparameters. 
     """
     def __init__(self, datacube_shape, num_input_variables, future_steps,
-                 tasks):
+                 tasks, model_cfg):
         super().__init__()
         self.tabular_tasks = tasks
+        self.model_cfg = model_cfg
         self.datacube_shape = datacube_shape
         self.num_input_variables = num_input_variables
         # Create the encoder
-        self.encoder = Encoder3d(datacube_shape) 
+        self.encoder = Encoder3d(datacube_shape, conv_blocks=model_cfg['encoder_depth'],
+                                 hidden_channels=model_cfg['encoder_channels'])
         # Create the common linear module
         self.common_linear_model = CommonLinearModule(self.encoder.output_shape,
                                                       num_input_variables * future_steps,
@@ -129,7 +133,7 @@ class StormPredictionModel(pl.LightningModule):
         """
         Configures the optimizer.
         """
-        optimizer = torch.optim.Adam(self.parameters(), lr=5e-4)
+        optimizer = torch.optim.Adam(self.parameters(), lr=5e-4, weight_decay=self.model_cfg['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         return {
                 "optimizer": optimizer,
