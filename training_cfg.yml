@@ -1,5 +1,5 @@
 experiment:
-  name: test_tcir
+  name: tcir_intensity_normal
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -13,17 +13,17 @@ tasks:
   intensity:
     output_variables: ['INTENSITY']
     distribution: normal 
-  location:
-    output_variables: ['LAT', 'LON']
-    distribution: deterministic
+  # location:
+    # output_variables: ['LAT', 'LON']
+    # distribution: deterministic
 training_settings:
-  epochs: 10
+  epochs: 100
   batch_size: 128
   # Trainer precision, usually "bf16-mixed"
   precision: bf16-mixed 
 model_hyperparameters:
   # Number of convolutional blocks (Each block has 2 Conv layers)
-  depth: 5
+  depth: 6
   # Number of channels in the first hidden layer
   hidden_channels: 4
 

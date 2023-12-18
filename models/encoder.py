@@ -17,7 +17,7 @@ class Encoder3d(nn.Module):
         Number of hidden channels in the first convolutional layer.
     """
     def __init__(self, input_shape,
-                 conv_blocks=4, hidden_channels=4):
+                 conv_blocks=7, hidden_channels=4):
         super().__init__()
         input_channels, d, h, w = input_shape
         # Input convolutional block
