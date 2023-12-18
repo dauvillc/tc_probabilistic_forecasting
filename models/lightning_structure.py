@@ -35,8 +35,8 @@ class StormPredictionModel(pl.LightningModule):
             The names of the output variables for the task.
         - 'output_size': int
             The number of values to predict for the task.
-        - 'loss_function': callable
-            The loss function for the task.
+        - 'distrib_obj': Distribution object implementing loss_functio, metrics
+            and optionally activation.
     """
     def __init__(self, datacube_shape, num_input_variables, future_steps,
                  tasks):
@@ -56,8 +56,6 @@ class StormPredictionModel(pl.LightningModule):
         for task, task_params in tasks.items():
             # Create the prediction head
             self.prediction_heads[task] = PredictionHead(128, task_params['output_size'], future_steps)
-            # Create the loss function
-            self.loss_functions[task] = task_params['loss_function']
 
     def training_step(self, batch, batch_idx):
         """
@@ -67,8 +65,8 @@ class StormPredictionModel(pl.LightningModule):
         predictions = self.forward(batch, batch_idx)
         # Compute the indivual losses for each task
         losses = {}
-        for task in self.tabular_tasks:
-            losses[task] = self.loss_functions[task](predictions[task], future_variables[task])
+        for task, task_params in self.tabular_tasks.items():
+            losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task])
             self.log(f"train_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
         total_loss = sum(losses.values())
@@ -83,19 +81,19 @@ class StormPredictionModel(pl.LightningModule):
         predictions = self.forward(batch, batch_idx)
         # Compute the indivual losses for each task
         losses = {}
-        for task in self.tabular_tasks:
+        for task, task_params in self.tabular_tasks.items():
             # Denormalize the predictions using the task-specific denormalization function
-            predictions[task] = self.tabular_tasks[task]['denormalize'](predictions[task], task)
+            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task)
             # Compute the loss in the original scale
-            losses[task] = self.loss_functions[task](predictions[task], future_variables[task])
+            losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task])
             self.log(f"val_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
         total_loss = sum(losses.values())
         self.log("val_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
 
         # Compute the metrics for each task
-        for task in self.tabular_tasks:
-            for metric_name, metric in self.tabular_tasks[task]['metrics'].items():
+        for task, task_params in self.tabular_tasks.items():
+            for metric_name, metric in task_params['distrib_obj'].metrics.items():
                 # Compute the metric in the original scale
                 metric_value = metric(predictions[task], future_variables[task])
                 self.log(f"val_{metric_name}_{task}", metric_value, on_step=False, on_epoch=True)
@@ -120,8 +118,11 @@ class StormPredictionModel(pl.LightningModule):
         latent_space = self.common_linear_model(latent_space, past_variables)
         # Apply the prediction heads
         predictions = {}
-        for task in self.tabular_tasks:
+        for task, task_params in self.tabular_tasks.items():
             predictions[task] = self.prediction_heads[task](latent_space)
+            # Check if there is an activation function specific to the distribution
+            if hasattr(task_params['distrib_obj'], 'activation'):
+                predictions[task] = task_params['distrib_obj'].activation(predictions[task])
         return predictions
 
     def configure_optimizers(self):

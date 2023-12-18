@@ -82,6 +82,19 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
         normal_dist = Normal(mu, sigma)
         return normal_dist.icdf(torch.tensor(u))
+    
+    def activation(self, predicted_params):
+        """
+        Applies the Softplus activation to the predicted standard deviation,
+        to ensure that it is positive.
+        
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, 2)
+            The predicted parameters of the normal distribution for each sample and time step.
+        """
+        mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
+        return torch.stack([mu, torch.nn.functional.softplus(sigma)], dim=-1)
 
     def loss_function(self, predicted_params, y):
         """
@@ -106,13 +119,10 @@ class NormalDistribution:
         predicted_params = predicted_params.view(-1, self.n_parameters)
         y = y.flatten()
         mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
-        # Where sigma is negative, we add the distance between 0 and sigma to the loss
-        loss = torch.zeros_like(sigma)
-        loss[sigma < 0] = -sigma[sigma < 0]
         # Clamp sigma to a small positive value
-        sigma = torch.clamp(sigma, min=1e-5)
+        valid_sigma = torch.clamp(sigma, min=1e-2)
         # Compute the CRPS
-        loss += normal_crps(mu, sigma, y)
+        loss = normal_crps(mu, valid_sigma, y)
         return loss.mean()
 
     def denormalize(self, predicted_params, task):

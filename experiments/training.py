@@ -51,13 +51,11 @@ def create_tasks(tasks_cfg):
     for task, params in tasks_cfg.items():
         tasks[task] = {'output_variables': params['output_variables'],
                        'distribution': params['distribution']}
-        # Create the distribution object and retrieve:
+        # Create the distribution object, which implements the loss function,
+        # the metrics, optionally the activation function
         distrib = create_output_distrib(params['distribution'], tasks)
-        # - The loss function
-        tasks[task]['loss_function'] = distrib.loss_function
-        # - The denormalization function
-        tasks[task]['denormalize'] = distrib.denormalize
-        # - The output size, either:
+        tasks[task]['distrib_obj'] = distrib
+        # Retrieve the output size, either:
         #  - the number of output variables if more than one (and then the distribution must be deterministic)
         #  - the number of parameters of the distribution if it is probabilistic (and only one output variable)
         if len(tasks[task]['output_variables']) > 1:
@@ -67,8 +65,6 @@ def create_tasks(tasks_cfg):
             tasks[task]['output_size'] = len(params['output_variables'])
         else:
             tasks[task]['output_size'] = distrib.n_parameters
-        # The metrics
-        tasks[task]['metrics'] = distrib.metrics
     return tasks
 
 
