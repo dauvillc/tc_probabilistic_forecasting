@@ -40,21 +40,22 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         Which datacubes to use as input. The names must be keys of datacubes.
     output_datacubes: list of str
         Which datacubes to use as output. The names must be keys of datacubes.
-    past_steps: int
-        The number of past steps to return.
-    future_steps: int
-        The number of future steps to return.
+    cfg: dict
+        The configuration dictionary.
+    random_rotations: bool, optional
+        If True, the input datacubes are randomly rotated by an angle between -180 and 179 degrees.
     """
     def __init__(self, trajectories, input_columns, output_tabular_tasks, datacubes,
-                 input_datacubes, output_datacubes, past_steps, future_steps):
+                 input_datacubes, output_datacubes, cfg, random_rotations=False):
         self.trajectories = trajectories
         self.input_columns = input_columns
         self.output_tabular_tasks = output_tabular_tasks
         self.datacubes = datacubes
         self.input_datacubes = input_datacubes
         self.output_datacubes = output_datacubes
-        self.past_steps = past_steps
-        self.future_steps = future_steps
+        self.past_steps = cfg['experiment']['past_steps']
+        self.future_steps = cfg['experiment']['future_steps']
+        self.random_rotations = random_rotations
         # The output variables are the variables that are included in at least one
         # tabular task.
         self.output_columns = set()
@@ -105,14 +106,17 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # a storm at time t, then datacube[i - P + 1] refers to the same storm at time t - P + 1, and datacube[i + T]
         # refers to the same storm at time t + T.
 
-        # Create the random transformations to apply to the datacubes.
-        # The datacube is randomly rotated by angle between -180 and 179 degrees,
-        # and is then center-cropped to 64x64 pixels.
-        self.transforms = v2.Compose([
-            v2.RandomRotation(degrees=(-180, 179)),
-            v2.CenterCrop(64)
-        ])
-
+        if self.random_rotations:
+            # Create the random transformations to apply to the datacubes.
+            # The datacube is randomly rotated by angle between -180 and 179 degrees,
+            # and is then center-cropped to 64x64 pixels.
+            self.transforms = v2.Compose([
+                v2.RandomRotation(degrees=(-180, 179)),
+                v2.CenterCrop(64)
+            ])
+        else:
+            # Otherwise, just crop the center of the datacube.
+            self.transforms = v2.CenterCrop(64)
 
     def normalize_inputs(self, other_dataset=None):
         """
@@ -276,5 +280,5 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Retrieve the number of channels of the datacube:
         c = self.datacubes[name].shape[1]
         # Retrieve the size of the datacube after cropping:
-        h, w = self.transforms.transforms[1].size
+        h, w = self.transforms.transforms[-1].size
         return c, self.past_steps, h, w

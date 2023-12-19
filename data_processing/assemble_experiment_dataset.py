@@ -34,7 +34,6 @@ def load_dataset(cfg, input_variables, tasks):
     train_loader : torch.utils.data.DataLoader
     val_loader : torch.utils.data.DataLoader
     """
-    past_steps, future_steps = cfg['experiment']['past_steps'], cfg['experiment']['future_steps']
     # ====== LOAD DATASET ====== #
     # Load the TCIR dataset
     tcir_info, tcir_datacube = load_tcir()
@@ -71,10 +70,10 @@ def load_dataset(cfg, input_variables, tasks):
     # Create the train and validation datasets.
     train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tasks,
                                            {'tcir': train_patches}, ['tcir'], [],
-                                           past_steps, future_steps)
+                                           cfg, random_rotations=True)
     val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tasks,
                                          {'tcir': val_patches}, ['tcir'], [],
-                                         past_steps, future_steps)
+                                         cfg, random_rotations=False)
     # Normalize the data. For the validation dataset, we use the mean and std of the training dataset.
     # The normalization constants are saved in the tasks dictionary.
     train_dataset.normalize_inputs()
