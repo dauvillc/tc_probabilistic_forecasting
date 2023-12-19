@@ -116,7 +116,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             ])
         else:
             # Otherwise, just crop the center of the datacube.
-            self.transforms = v2.CenterCrop(64)
+            self.transforms = v2.Compose([v2.CenterCrop(64)])
 
     def normalize_inputs(self, other_dataset=None):
         """
