@@ -1,5 +1,5 @@
 experiment:
-  name: st_norm_rotate&crop
+  name: vmax_mslp_deterministic
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -10,14 +10,17 @@ tasks:
   # - "deterministic" (MSE loss)
   # - "normal"
   # - "qc" (quantiles composite)
-  intensity:
+  vmax:
     output_variables: ['INTENSITY']
-    distribution: normal 
+    distribution: deterministic 
+  mslp:
+    output_variables: ['MSLP']
+    distribution: deterministic
   # location:
     # output_variables: ['LAT', 'LON']
     # distribution: deterministic
 training_settings:
-  epochs: 100
+  epochs: 50
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
