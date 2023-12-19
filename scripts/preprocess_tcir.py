@@ -18,6 +18,7 @@ if __name__ == '__main__':
         cfg = yaml.safe_load(cfg_file)
     _TCIR_PATH_ = cfg['paths']['tcir']
 
+    print("Loading the raw TCIR dataset...")
     # Load the tabular information
     data_info = pd.read_hdf(_TCIR_PATH_, key="info", mode='r')
 
@@ -35,6 +36,21 @@ if __name__ == '__main__':
                              }, axis="columns")
     # Convert ISO_TIME to datetime
     data_info['ISO_TIME'] = pd.to_datetime(data_info['ISO_TIME'], format='%Y%m%d%H')
+
+    # === OPTIONAL SUBSAMPLING ===
+    # If the dataset is too large, we can subsample it by selecting a random subset of the
+    # storms. This is done by specifying the 'tcir/subsample' key in the config file.
+    if cfg['tcir']['subsample']:
+        fraction = cfg['tcir']['subsample_fraction']
+        # Select a random subset of the storms
+        sids = data_info['SID'].unique()
+        sids = np.random.choice(sids, size=int(len(sids) * fraction), replace=False)
+        data_info = data_info[data_info['SID'].isin(sids)]
+        # Select the corresponding entries in the datacube
+        datacube = datacube.isel(phony_dim_4=data_info.index)
+        # Reset the index of data_info so that it matches datacube.isel
+        data_info = data_info.reset_index(drop=True)
+        print(f"Subsampled to {len(data_info['SID'].unique())} storms.")
 
     # === TEMPORAL SELECTION ===
     # The temporal resolution in TCIR is 3 hours, but the best-track data's original resolution
@@ -76,6 +92,7 @@ if __name__ == '__main__':
     datacube = datacube.assign_coords(variable=('variable', ['IR', 'PMW']))
     
     # === OUTLIERS AND MISSING VALUES ==== (SEE NOTEBOOK FOR EXPLAINATIONS)
+    print("Processing outliers and missing values...")
     # Convert the unreasonably large values to NaNs
     datacube = datacube.where(datacube[:, :, :, 1] < 10^3)
     # Compute the ratio of NaNs (native + converted from outliers) for each sample
@@ -123,13 +140,14 @@ if __name__ == '__main__':
     # Select the index of data_info (which doesn't contain the full-NaN samples anymore) in the datacube
     datacube = datacube.isel(sid_time=data_info.index)
     # Reset the index of the tabular data, so that it matches that of the datacube
-    data_info = data_info.reset_index()
+    data_info = data_info.reset_index(drop=True)
     # We can now interpolate the partially-NaN images
     datacube = datacube.interpolate_na('h_pixel_offset', method='nearest')
     # NaN values at the border won't be interpolated, we'll fill them with zeros.
     datacube = datacube.fillna(0)
 
     # === SAVE THE PREPROCESSED DATA ===
+    print("Saving the preprocessed data...")
     # Retrieve the save path for the tabular data and the datacube from the config file
     _TCIR_INFO_PATH_ = cfg['paths']['tcir_info_preprocessed']
     _TCIR_DATACUBE_PATH_ = cfg['paths']['tcir_datacube_preprocessed']
