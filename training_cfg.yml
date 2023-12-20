@@ -1,5 +1,5 @@
 experiment:
-  name: vmax_mslp_deterministic
+  name: vmax_mslp_r34_deterministic_cosine_lr
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -12,23 +12,28 @@ tasks:
   # - "qc" (quantiles composite)
   vmax:
     output_variables: ['INTENSITY']
-    distribution: deterministic 
+    distribution: deterministic
   mslp:
     output_variables: ['MSLP']
+    distribution: deterministic
+  r34_avg:
+    output_variables: ['R35_4qAVG']
     distribution: deterministic
   # location:
     # output_variables: ['LAT', 'LON']
     # distribution: deterministic
 training_settings:
-  epochs: 50
+  epochs: 100
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
+  # Learning-related params
+  initial_lr: 0.01
+  # Weight decay
+  weight_decay: 0
 model_hyperparameters:
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 4
   # Number of channels in the first hidden layer
   encoder_channels: 4
-  # Weight decay
-  weight_decay: 0
 

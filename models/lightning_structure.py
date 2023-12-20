@@ -37,19 +37,20 @@ class StormPredictionModel(pl.LightningModule):
             The number of values to predict for the task.
         - 'distrib_obj': Distribution object implementing loss_functio, metrics
             and optionally activation.
-    model_cfg: Mapping of str to Any
-        The model hyperparameters. 
+    cfg: dict
+        The configuration dictionary.
     """
     def __init__(self, datacube_shape, num_input_variables, future_steps,
-                 tasks, model_cfg):
+                 tasks, cfg):
         super().__init__()
         self.tabular_tasks = tasks
-        self.model_cfg = model_cfg
+        self.model_cfg = cfg['model_hyperparameters']
+        self.training_cfg = cfg['training_settings']
         self.datacube_shape = datacube_shape
         self.num_input_variables = num_input_variables
         # Create the encoder
-        self.encoder = Encoder3d(datacube_shape, conv_blocks=model_cfg['encoder_depth'],
-                                 hidden_channels=model_cfg['encoder_channels'])
+        self.encoder = Encoder3d(datacube_shape, conv_blocks=self.model_cfg['encoder_depth'],
+                                 hidden_channels=self.model_cfg['encoder_channels'])
         # Create the common linear module
         self.common_linear_model = CommonLinearModule(self.encoder.output_shape,
                                                       num_input_variables * future_steps,
@@ -133,8 +134,10 @@ class StormPredictionModel(pl.LightningModule):
         """
         Configures the optimizer.
         """
-        optimizer = torch.optim.Adam(self.parameters(), lr=5e-4, weight_decay=self.model_cfg['weight_decay'])
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.training_cfg['initial_lr'],
+                                     weight_decay=self.training_cfg['weight_decay'])
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                                  T_max=self.training_cfg['epochs'])
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": lr_scheduler,

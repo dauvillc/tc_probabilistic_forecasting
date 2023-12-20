@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # Initialize the model
     datacube_shape = train_dataset.input_datacube_shape('tcir')
     num_input_variables = len(input_variables)
-    model = StormPredictionModel(datacube_shape, num_input_variables, future_steps, tasks, model_cfg)
+    model = StormPredictionModel(datacube_shape, num_input_variables, future_steps, tasks, cfg)
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
