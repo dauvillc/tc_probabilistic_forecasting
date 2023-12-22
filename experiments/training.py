@@ -5,7 +5,7 @@ import sys
 sys.path.append("./")
 import pytorch_lightning as pl
 import yaml
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
@@ -48,6 +48,8 @@ def create_tasks(tasks_cfg):
     Creates the dictionary of tasks from the configuration file.
     """
     tasks = {}
+    if tasks_cfg is None:
+        return tasks
     for task, params in tasks_cfg.items():
         tasks[task] = {'output_variables': params['output_variables'],
                        'distribution': params['distribution']}
@@ -89,7 +91,7 @@ if __name__ == "__main__":
     tasks = create_tasks(tasks_cfg)
 
     # ====== DATA LOADING ====== #
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks)
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
@@ -100,14 +102,17 @@ if __name__ == "__main__":
 
     # ====== MODELS CREATION ====== #
     # Initialize the model
-    datacube_shape = train_dataset.input_datacube_shape('tcir')
+    datacube_shape = train_dataset.datacube_shape('tcir')
     num_input_variables = len(input_variables)
-    model = StormPredictionModel(datacube_shape, num_input_variables, future_steps, tasks, cfg)
+    model = StormPredictionModel(datacube_shape, num_input_variables, tasks,
+                                 {'tcir': train_dataset.datacube_shape('tcir')},
+                                 cfg)
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
     trainer = pl.Trainer(accelerator='gpu', precision=training_cfg['precision'],
                          max_epochs=training_cfg['epochs'], logger=wandb_logger,
-                         callbacks=[ModelCheckpoint(monitor='val_loss', mode='min')])
+                         callbacks=[ModelCheckpoint(monitor='val_loss', mode='min'),
+                                    LearningRateMonitor()])
     trainer.fit(model, train_loader, val_loader)
 
