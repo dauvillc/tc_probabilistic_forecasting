@@ -10,7 +10,7 @@ from utils.utils import hours_to_sincos
 
 
 
-def load_dataset(cfg, input_variables, tasks):
+def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
@@ -21,11 +21,13 @@ def load_dataset(cfg, input_variables, tasks):
         The configuration of the experiment.
     input_variables : list of str
         The list of the input variables.
-    tasks: Mapping of str to Mapping
-        The tasks to perform. The keys are the task names, and the values are
+    tabular_tasks: Mapping of str to Mapping
+        The tasks whose targets are vectors. The keys are the task names, and the values are
         mappings containing the task parameters, including:
         - 'output_variables': list of str
             The list of the output variables.
+    datacube_tasks: list of str
+        The list of the output datacubes.
 
     Returns
     -------
@@ -68,14 +70,14 @@ def load_dataset(cfg, input_variables, tasks):
 
     # ====== DATASET CREATION ====== #
     # Create the train and validation datasets.
-    train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tasks,
-                                           {'tcir': train_patches}, ['tcir'], [],
+    train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tabular_tasks,
+                                           {'tcir': train_patches}, ['tcir'], datacube_tasks,
                                            cfg, random_rotations=True)
-    val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tasks,
-                                         {'tcir': val_patches}, ['tcir'], [],
+    val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tabular_tasks,
+                                         {'tcir': val_patches}, ['tcir'], datacube_tasks,
                                          cfg, random_rotations=False)
     # Normalize the data. For the validation dataset, we use the mean and std of the training dataset.
-    # The normalization constants are saved in the tasks dictionary.
+    # The normalization constants are saved in the tabular_tasks dictionary.
     train_dataset.normalize_inputs()
     train_dataset.normalize_outputs(save_statistics=True)
     val_dataset.normalize_inputs(other_dataset=train_dataset)

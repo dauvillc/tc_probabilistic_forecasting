@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from models.cnn3d import ConvBlock3D
+from models.cnn3d import DownsamplingBlock3D
 
 
 class Encoder3d(nn.Module):
@@ -22,12 +22,13 @@ class Encoder3d(nn.Module):
         input_channels, d, h, w = input_shape
         # Input convolutional block
         c = max(hidden_channels, input_channels)
-        self.input_conv = nn.Conv3d(input_channels, c, kernel_size=3, padding=1) # DxHxW -> DxHxW
+        self.input_conv = nn.Conv3d(input_channels, c,
+                                    kernel_size=(1, 3, 3), padding=(0, 1, 1)) # DxHxW -> DxHxW
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])
         for i in range(conv_blocks):
             new_c = (i + 1) * hidden_channels
-            self.conv_blocks.append(ConvBlock3D(c, new_c))
+            self.conv_blocks.append(DownsamplingBlock3D(c, new_c)) # DxHxW -> DxH/2xW/2
             c = new_c
             # Keep track of the output size of each block
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))

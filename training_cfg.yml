@@ -1,5 +1,5 @@
 experiment:
-  name: vmax_mslp_r34_deterministic_cosine_lr
+  name: test_cbam
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -10,15 +10,15 @@ tasks:
   # - "deterministic" (MSE loss)
   # - "normal"
   # - "qc" (quantiles composite)
-  vmax:
-    output_variables: ['INTENSITY']
-    distribution: deterministic
-  mslp:
-    output_variables: ['MSLP']
-    distribution: deterministic
-  r34_avg:
-    output_variables: ['R35_4qAVG']
-    distribution: deterministic
+  # vmax:
+    # output_variables: ['INTENSITY']
+    # distribution: deterministic
+  # mslp:
+    # output_variables: ['MSLP']
+    # distribution: deterministic
+  # r34_avg:
+    # output_variables: ['R35_4qAVG']
+    # distribution: deterministic
   # location:
     # output_variables: ['LAT', 'LON']
     # distribution: deterministic
@@ -35,5 +35,8 @@ model_hyperparameters:
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 4
   # Number of channels in the first hidden layer
-  encoder_channels: 4
+  encoder_channels: 16
+  # Number of channels in the output of the Common Linear Module
+  # (also the channels in the decoder input)
+  clm_output_channels: 4
 

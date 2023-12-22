@@ -26,10 +26,12 @@ class CommonLinearModule(nn.Module):
     def __init__(self, input_shape, n_input_vars, output_size):
         super().__init__()
         c, d, h, w = input_shape
-        # Linear layer for projecting the variables
-        # Since the projection will be concatenated with the latent space,
-        # its size doesn't need to be large.
-        self.var_projection = nn.Linear(n_input_vars, n_input_vars)
+        # Embedding layer for the variables
+        self.var_embedding = nn.Sequential(
+            nn.Linear(n_input_vars, n_input_vars),
+            nn.SELU(),
+            nn.Linear(n_input_vars, n_input_vars)
+        )
         # Linear layer for projecting the latent space, concatenated with the
         # projected variables
         self.latent_projection = nn.Linear(c * d * h * w + n_input_vars, output_size)
@@ -47,12 +49,12 @@ class CommonLinearModule(nn.Module):
         torch tensor of dimensions (N, output_size)
             The latent space for the prediction heads.
         """
-        # Project the variables
-        projected_vars = torch.selu(self.var_projection(variables))
+        # Embed the contextual variables 
+        embedded_vars = torch.selu(self.var_embedding(variables))
         # Flatten the latent space
         flattened_latent_space = latent_space.flatten(start_dim=1)
         # Concatenate the latent space and the projected variables
-        concatenated = torch.cat([flattened_latent_space, projected_vars], dim=1)
+        concatenated = torch.cat([flattened_latent_space, embedded_vars], dim=1)
         # Project the concatenated tensor
         return torch.selu(self.latent_projection(concatenated))
 

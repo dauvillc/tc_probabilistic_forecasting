@@ -6,6 +6,7 @@ steps of a multiple time series, which can be either tabular data or images.
 import pandas as pd
 import torch
 from torchvision.transforms import v2
+from torchvision import tv_tensors
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
@@ -75,9 +76,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Every manipulation of the trajectories will be done separately for each storm.
         grouped_trajs = self.trajectories.groupby('SID')
         # Create a DataFrame for the input time series. For each input variable V_t, it includes
-        # the columns V_{-P+1}, ..., V_{0}.
+        # the columns V_{-P+1}, ..., V_{0}. We also include the columns SID and ISO_TIME, to make
+        # sure input_trajectories has at least one column.
         self.input_trajectories = pd.DataFrame()
-        for var in self.input_columns:
+        for var in self.input_columns + ['SID', 'ISO_TIME']:
             for i in range(self.past_steps):
                 self.input_trajectories[f"{var}_{-i}"] = grouped_trajs[var].shift(i)
         # The first P-1 rows of each storm are NaN since there are no previous steps.
@@ -86,7 +88,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Create a DataFrame for the output time series. For each output variable V_t, it includes
         # the columns V_{1}, ..., V_{T}.
         self.output_trajectories = pd.DataFrame()
-        for var in self.output_columns:
+        for var in self.output_columns + ['SID', 'ISO_TIME']:
             for i in range(1, self.future_steps + 1):
                 self.output_trajectories[f"{var}_{i}"] = grouped_trajs[var].shift(-i)
         # The last T rows of each storm are NaN since there are no future steps.
@@ -105,6 +107,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # These gaps are not present in the datacubes' indices, on purpose: if input_trajectories[i] refers to
         # a storm at time t, then datacube[i - P + 1] refers to the same storm at time t - P + 1, and datacube[i + T]
         # refers to the same storm at time t + T.
+        # We can now remove the columns SID_t and ISO_TIME_t from the input and output time series.
+        for i in range(-self.past_steps + 1, 1):
+            self.input_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
+        for i in range(1, self.future_steps + 1):
+            self.output_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
 
         if self.random_rotations:
             # Create the random transformations to apply to the datacubes.
@@ -243,17 +250,20 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         for name in self.input_datacubes:
             datacube = self.datacubes[name][datacube_index - self.past_steps + 1: datacube_index + 1]
             # Convert the datacube from shape (P, C, H, W) to (C, P, H, W), as expected by torch.
-            input_datacubes[name] = datacube.transpose(1, 0)
+            datacube = datacube.transpose(1, 0)
+            # Convert the datacube to a TVTensor, to indicate to torch that the transforms should
+            # be applied to it.
+            input_datacubes[name] = tv_tensors.Image(datacube)
 
         # Retrieve the output datacubes.
         output_datacubes = {}
         for name in self.output_datacubes:
             datacube = self.datacubes[name][datacube_index + 1: datacube_index + 1 + self.future_steps]
-            output_datacubes[name] = datacube.transpose(1, 0)
+            datacube = datacube.transpose(1, 0)
+            output_datacubes[name] = tv_tensors.Image(datacube)
 
         # Apply the same transformations to the input and output datacubes.
-        transformed = self.transforms([input_datacubes, output_datacubes])
-        input_datacubes, output_datacubes = transformed[0], transformed[1]
+        input_datacubes, output_datacubes = self.transforms(input_datacubes, output_datacubes)
 
         return input_time_series, input_datacubes, output_time_series, output_datacubes
     
@@ -272,9 +282,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         return self.trajectories[variable].min(), self.trajectories[variable].max()
 
-    def input_datacube_shape(self, name):
+    def datacube_shape(self, name):
         """
-        Returns the shape of a datacube used as input, as a tuple
+        Returns the shape of a datacube, as a tuple
         (C, P, H, W).
         """
         # Retrieve the number of channels of the datacube:
