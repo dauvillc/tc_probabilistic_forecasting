@@ -11,14 +11,17 @@ class Encoder3d(nn.Module):
     ----------
     input_shape: tuple of int (C, D, H, W)
         The shape of the input, channels first.
+    base_block: str
+        'conv' or 'cbam', type of block to use.
     conv_blocks: int, optional
         Number of convolutional blocks.
     hidden_channels: int, optional
         Number of hidden channels in the first convolutional layer.
     """
-    def __init__(self, input_shape,
+    def __init__(self, input_shape, base_block,
                  conv_blocks=7, hidden_channels=4):
         super().__init__()
+        self.base_block = base_block
         input_channels, d, h, w = input_shape
         # Input convolutional block
         c = max(hidden_channels, input_channels)
@@ -28,7 +31,7 @@ class Encoder3d(nn.Module):
         self.conv_blocks = nn.ModuleList([])
         for i in range(conv_blocks):
             new_c = (i + 1) * hidden_channels
-            self.conv_blocks.append(DownsamplingBlock3D(c, new_c)) # DxHxW -> DxH/2xW/2
+            self.conv_blocks.append(DownsamplingBlock3D(c, new_c, base_block)) # DxHxW -> DxH/2xW/2
             c = new_c
             # Keep track of the output size of each block
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))

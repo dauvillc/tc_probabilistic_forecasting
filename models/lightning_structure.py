@@ -15,7 +15,8 @@ class StormPredictionModel(pl.LightningModule):
     Implements a LightningModule for the storm prediction task.
     The model takes two inputs (past_variables, past_datacubes):
     - past_variables is a Mapping of str to tensor, with the keys being the names
-      of the variables and the values being tensors of shape (N, P).
+      of the variables and the values being tensors of shape (N, P * number of variables),
+      where P is the number of past steps.
     - past_datacubes is a Mapping of str to tensor, with the keys being the names
         of the datacubes and the values being tensors of shape (N, C, P, H, W).
     The model can have multiple outputs, which can be either vectors or datacubes.
@@ -24,7 +25,7 @@ class StormPredictionModel(pl.LightningModule):
 
     Parameters
     ----------
-    input_datacube_shape: tuple of int (C, D, H, W)
+    input_datacube_shape: tuple of int (C, P, H, W)
         The shape of the input datacube.
     num_input_variables: int
         The number of input variables.
@@ -41,7 +42,7 @@ class StormPredictionModel(pl.LightningModule):
             and optionally activation. 
     datacube_tasks: Mapping of str to tuple
         The tasks whose targets are datacubes, with the keys being the task names and the values
-        being the shape of the corresponding datacube, as (C, D, H, W).
+        being the shape of the corresponding datacube, as (C, T, H, W).
     cfg: dict
         The configuration dictionary.
     """
@@ -55,7 +56,9 @@ class StormPredictionModel(pl.LightningModule):
         self.num_input_variables = num_input_variables
         future_steps = cfg['experiment']['future_steps']
         # Create the encoder
-        self.encoder = Encoder3d(input_datacube_shape, conv_blocks=self.model_cfg['encoder_depth'],
+        self.encoder = Encoder3d(input_datacube_shape,
+                                 self.model_cfg['base_block'],
+                                 conv_blocks=self.model_cfg['encoder_depth'],
                                  hidden_channels=self.model_cfg['encoder_channels'])
         # Create the common linear module
         # The output size of the CLM is (T * h * w * c) where T is the number of future steps,
@@ -81,6 +84,7 @@ class StormPredictionModel(pl.LightningModule):
             # The output of the decoder is all target datacubes concatenated along the channel dimension
             decoder_output_channels = sum([datacube_shape[0] for datacube_shape in datacube_tasks.values()])
             self.decoder = Decoder3d(self.clm_output_channels, decoder_output_channels,
+                                     self.model_cfg['base_block'],
                                      self.model_cfg['encoder_depth'])
 
     def training_step(self, batch, batch_idx):
@@ -88,7 +92,7 @@ class StormPredictionModel(pl.LightningModule):
         Implements a training step.
         """
         past_variables, past_datacubes, future_variables, future_datacubes = batch
-        predictions = self.forward(batch, batch_idx)
+        predictions = self.forward(past_variables, past_datacubes)
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
@@ -108,7 +112,7 @@ class StormPredictionModel(pl.LightningModule):
         Implements a validation step.
         """
         past_variables, past_datacubes, future_variables, future_datacubes = batch
-        predictions = self.forward(batch, batch_idx)
+        predictions = self.forward(past_variables, past_datacubes)
         # Compute the indivual losses for each tabular task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
@@ -135,16 +139,17 @@ class StormPredictionModel(pl.LightningModule):
 
         return total_loss
  
-    def forward(self, batch, batch_idx):
+    def forward(self, past_variables, past_datacubes):
         """
         Parameters
         ----------
-        batch: tuple (past_vars, past_datacubes, future_vars, future_datacubes)
-            Where each element is a Mapping of str to tensor.
-        batch_idx: int
-            The index of the batch.
+        past_variables: Mapping of str to tensor
+            The past variables, with the keys being the names of the variables and the values
+            being batches of shape (N, P * number of variables).
+        past_datacubes: Mapping of str to tensor
+            The past datacubes, with the keys being the names of the datacubes and the values
+            being batches of shape (N, C, P, H, W).
         """
-        past_variables, past_datacubes, future_variables, future_datacubes = batch
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)
         # Encode the past datacubes into a latent space

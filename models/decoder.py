@@ -12,14 +12,17 @@ class Decoder3d(nn.Module):
         Number of input channels.
     out_channels: int
         Number of output channels.
+    base_block: str
+        'conv' or 'cbam', type of block to use.
     n_blocks: int, optional
         Number of upsampling blocks.
     """
-    def __init__(self, in_channels, out_channels, n_blocks):
+    def __init__(self, in_channels, out_channels, base_block, n_blocks):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.n_blocks = n_blocks
+        self.base_block = base_block
 
         # Build the blocks, with decreasing number of channels.
         # The number of channels is symmetric with the encoder.
@@ -27,7 +30,7 @@ class Decoder3d(nn.Module):
         channels = in_channels
         for i in range(n_blocks, 0, -1):
             channels = i * in_channels
-            self.blocks.append(UpsampleConvBlock3D(in_channels, channels))
+            self.blocks.append(UpsampleConvBlock3D(in_channels, channels, base_block))
             in_channels = channels
         
         # Final convolution.
