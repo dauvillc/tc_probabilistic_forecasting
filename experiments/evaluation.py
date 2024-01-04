@@ -56,7 +56,7 @@ if __name__ == "__main__":
    
     # ===== MODEL RECONSTUCTION ===== #
     # Retrieve the checkpoint from wandb
-    artifact = run.use_artifact('arches/tc_prediction/model-tc7puqa2:v0', type="model")
+    artifact = run.use_artifact(f'arches/tc_prediction/model-{run_id}:best', type="model")
     artifact_dir = artifact.download()
     checkpoint = Path(artifact_dir) / 'model.ckpt'
     # Reconstruct the model from the checkpoint
