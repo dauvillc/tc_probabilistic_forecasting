@@ -138,6 +138,14 @@ class StormPredictionModel(pl.LightningModule):
                 self.log(f"val_{metric_name}_{task}", metric_value, on_step=False, on_epoch=True)
 
         return total_loss
+
+    def predict_step(self, batch, batch_idx=0, dataloader_idx=None):
+        """
+        Implements a prediction step.
+        """
+        past_variables, past_datacubes, future_variables, future_datacubes = batch
+        predictions = self.forward(past_variables, past_datacubes)
+        return predictions
  
     def forward(self, past_variables, past_datacubes):
         """
@@ -149,6 +157,12 @@ class StormPredictionModel(pl.LightningModule):
         past_datacubes: Mapping of str to tensor
             The past datacubes, with the keys being the names of the datacubes and the values
             being batches of shape (N, C, P, H, W).
+
+        Returns
+        -------
+        Mapping of str to tensor
+            The predictions, with the keys being the task names and the values being batches
+            of predicted tensors.
         """
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)

@@ -5,29 +5,24 @@ saved locally.
 import sys
 sys.path.append("./")
 import argparse
-import numpy as np
 import wandb
 import torch
 import pytorch_lightning as pl
+import matplotlib.pyplot as plt
 from pathlib import Path
-from models.main_structure import StormPredictionModel
+from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
-from metrics.probabilistic import metric_per_threshold
-from plotting.quantiles import plot_quantile_losses
-from plotting.distributions import plot_data_distribution
-from plotting.probabilistic import plot_metric_per_threshold
-from experiments.training import create_model, create_output_distrib
+from experiments.training import create_tasks
 
 
 if __name__ == "__main__":
     pl.seed_everything(42)
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
-    output_variables = ['INTENSITY']
     # Argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, required=True,
-                        help="The name of the experiment to evaluate.")
+                        help="The names of the experiment to evaluate.")
     args = parser.parse_args()
 
     # ====== WANDB INITIALIZATION ====== #
@@ -47,91 +42,57 @@ if __name__ == "__main__":
     run_id = evaluated_run.id
     # We can now retrieve the config of the run
     cfg = evaluated_run.config
-    experiment_cfg = cfg["experiment"]
-    model_cfg = cfg["model_hyperparameters"]
-    past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
-
-    # ====== DATA LOADING ====== #
-    # Retrieve the input type from the run config
-    input_data = experiment_cfg["input_data"]
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, output_variables)
-
-    # ===== OUTPUT DISTRIBUTION RECONSTRUCTION ====== #
-    # Create the output distribution
-    distrib_name = experiment_cfg["distribution"]
-    distrib = create_output_distrib(distrib_name, train_dataset)
-    
-    # ====== MODEL RECONSTRUCTION ====== #
-    # Create the model architecture
-    # We need to re-create the architecture, as it is not created within the LightningModule.
-    # Once we have recreated it, we can load the weights from the checkpoint.
-    patch_size = train_dataset.patch_size('era5')
-    datacube_size = (past_steps,) + patch_size
-    datacube_channels = train_dataset.datacube_channels('era5')
-    num_input_variables = len(input_variables) * past_steps
-    model = create_model(datacube_size, datacube_channels, num_input_variables,
-                         future_steps, distrib.n_parameters, hidden_channels=model_cfg['hidden_channels'])
-    prediction_model = model.prediction_model
-    projection_model = model.projection_model
-    
-    # Load the weights from the best checkpoint
-    artifact = run.use_artifact("model-" + run_id + ":best", type="model")
-    artifact_dir = artifact.download()
-
-    # load checkpoint
-    model = StormPredictionModel.load_from_checkpoint(Path(artifact_dir) / "model.ckpt",
-                                                      prediction_model=prediction_model,
-                                                      projection_model=projection_model)
-    # Log the evaluation config
+    # Log the config
     wandb.log(cfg)
-    wandb.log(distrib.hyperparameters())
 
-    # ====== EVALUATION ====== #
-    # Make predictions on the validation set
-    y_true = torch.cat([y['INTENSITY'].cpu().detach() for _, _, y, _ in val_loader], dim=0)
-    trainer = pl.Trainer(accelerator="gpu", max_epochs=1)
-    pred = torch.cat([p.cpu().detach() for p in trainer.predict(model, val_loader)], dim=0)
+    # ===== TASKS DEFINITION ==== #
+    # Retrieve the tasks configuration from the config
+    tasks_cfg = cfg['tasks']
+    # Create the tasks
+    tasks = create_tasks(tasks_cfg)
 
-    # Create a directory in the figures folder specific to this experiment
-    figpath = Path(f"figures/{experiment_cfg['name']}")
-    figpath.mkdir(exist_ok=True)
+    # ===== DATA LOADING ===== #
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
+   
+    # ===== MODEL RECONSTUCTION ===== #
+    # Retrieve the checkpoint from wandb
+    artifact = run.use_artifact('arches/tc_prediction/model-tc7puqa2:v0', type="model")
+    artifact_dir = artifact.download()
+    checkpoint = Path(artifact_dir) / 'model.ckpt'
+    # Reconstruct the model from the checkpoint
+    datacube_shape = train_dataset.datacube_shape('tcir')
+    num_input_variables = len(input_variables)
+    model = StormPredictionModel.load_from_checkpoint(checkpoint,
+                                                      input_datacube_shape=datacube_shape,
+                                                      num_input_variables=num_input_variables,
+                                                      tabular_tasks=tasks,
+                                                      datacube_tasks={'tcir': datacube_shape},
+                                                      cfg=cfg)
+    trainer = pl.Trainer(accelerator='gpu')
 
-    # Plot the distribution of the true values
-    fig = plot_data_distribution(y_true, quantiles=[0.1, 0.5, 0.75, 0.9, 0.95],
-                                 savepath=f"{figpath}/true_distribution.svg")
-    wandb.log({"true_distribution": wandb.Image(fig)})
-
-    # Compute the CRPS
-    # As the max in the validation dataset might be higher, we'll apply some margin
-    crps = distrib.metrics["CRPS"](pred, y_true)
-    print("Average CRPS:", crps)
-    wandb.log({"avg_crps": crps})
-    
-    # We'll now compute several metrics per threshold:
-    # Given a true value y and its associated predicted distribution F,
-    # we compute the metric L(y, F^{-1}(u)) for each threshold u.
-    thresholds = np.linspace(0, 1, 22)[1:-1]
-    # These metrics will be computed over the whole validation set, but also
-    # for subsets consisting of increasingly extreme values
-    y_true_quantiles = [0.5, 0.75, 0.9, 0.95]
-    # Get the inverse of the CDF, specific to the distribution
-    inverse_CDF = distrib.inverse_cdf
-    # Compute the metrics
-    metrics = ["bias", "mae", "rmse"]
-    for metric in metrics:
-        metric_df = metric_per_threshold(metric, y_true, pred, inverse_CDF, thresholds,
-                                         y_true_quantiles)
-        # Plot the metric per threshold
-        fig = plot_metric_per_threshold(metric, metric_df, y_true_quantiles,
-                                        save_path=f"{figpath}/{metric}_per_threshold.svg")
-        wandb.log({f"{metric}_per_threshold": wandb.Image(fig)})
-        # Log the metric per threshold to wandb
-        wandb.log({f"{metric}_per_threshold_table": wandb.Table(dataframe=metric_df)})
-
-    # DISTRIBUTION-SPECIFIC PLOTS
-    if distrib_name in ["quantile_composite", "qc"]:
-        # Plot the quantile losses and log them to wandb
-        fig = plot_quantile_losses({"model": pred}, y_true, distrib.quantiles,
-                                    savepath=f"{figpath}/quantile_losses.svg")
-        wandb.log({"quantile_losses": wandb.Image(fig)})
-
+    # ===== VISUALIZATION ===== #
+    # Compute the predictions on the validation set
+    predictions = trainer.predict(model, val_loader)
+    # Select five random samples from the first batch
+    random_indices = torch.randint(0, cfg['training_settings']['batch_size'], (5,))
+    # Select the corresponding targets and predictions
+    targets = next(iter(val_loader))[3]['tcir'][random_indices]
+    predictions = predictions[0]['tcir'][random_indices]
+    # The targets and predictions are tensors of shape (5, 2, T, H, W) (the first
+    # channel is IR, the second is Microwave). We'll only show the last time step:
+    targets = targets[:, :, -1]
+    predictions = predictions[:, :, -1]
+    # Create a figure with four columns: the target IR, the predicted IR, the 
+    # target Microwave and the predicted Microwave
+    fig, axes = plt.subplots(5, 4, figsize=(20, 20))
+    for i, (target, prediction) in enumerate(zip(targets, predictions)):
+        axes[i, 0].imshow(target[0].cpu(), cmap='gray')
+        axes[i, 0].set_title('Target IR')
+        axes[i, 1].imshow(prediction[0].cpu(), cmap='gray')
+        axes[i, 1].set_title('Predicted IR')
+        axes[i, 2].imshow(target[1].cpu(), cmap='gray')
+        axes[i, 2].set_title('Target Microwave')
+        axes[i, 3].imshow(prediction[1].cpu(), cmap='gray')
+        axes[i, 3].set_title('Predicted Microwave')
+    # Log the figure
+    wandb.log({'val_visualization': wandb.Image(fig)})
