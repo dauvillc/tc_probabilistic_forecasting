@@ -1,5 +1,5 @@
 experiment:
-  name: test_conv
+  name: debugging
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -23,7 +23,7 @@ tasks:
     # output_variables: ['LAT', 'LON']
     # distribution: deterministic
 training_settings:
-  epochs: 100
+  epochs: 50
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
@@ -37,8 +37,7 @@ model_hyperparameters:
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 4
   # Number of channels in the first hidden layer
-  encoder_channels: 16
-  # Number of channels in the output of the Common Linear Module
-  # (also the channels in the decoder input)
-  clm_output_channels: 4
+  encoder_channels: 8
+  # Reduction factor in the Common Linear Module
+  clm_reduction_factor: 4
 

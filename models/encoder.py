@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 from models.cnn3d import DownsamplingBlock3D
 
@@ -23,14 +22,16 @@ class Encoder3d(nn.Module):
         super().__init__()
         self.base_block = base_block
         input_channels, d, h, w = input_shape
-        # Input convolutional block
-        c = max(hidden_channels, input_channels)
-        self.input_conv = nn.Conv3d(input_channels, c,
-                                    kernel_size=(1, 3, 3), padding=(0, 1, 1)) # DxHxW -> DxHxW
+        # Define the list of the number of channels in the output of each block
+        # Begin with the input channels
+        self.output_channels = [input_channels]
+        c = input_channels
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])
-        for i in range(conv_blocks):
-            new_c = (i + 1) * hidden_channels
+        for i in range(0, conv_blocks):
+            new_c = 2 ** i * hidden_channels
+            # Save the number of channels in the output of the block
+            self.output_channels.append(new_c)
             self.conv_blocks.append(DownsamplingBlock3D(c, new_c, base_block)) # DxHxW -> DxH/2xW/2
             c = new_c
             # Keep track of the output size of each block
@@ -45,12 +46,12 @@ class Encoder3d(nn.Module):
             Input batch.
         Returns
         -------
-        torch tensor of dimensions (N, c, d, h, w)
-            Output batch, in the latent space.
+        A list of torch tensors of dimensions (N, C, D, H, W)
+            The output of each block.
         """
-        # Apply the input convolutional block
-        x = torch.selu(self.input_conv(x))
-        # Apply the successive convolutional blocks
+        # Apply the convolutional blocks
+        outputs = []
         for block in self.conv_blocks:
             x = block(x)
-        return x
+            outputs.append(x)
+        return outputs

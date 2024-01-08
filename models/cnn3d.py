@@ -132,10 +132,10 @@ class UpsampleConvBlock3D(nn.Module):
     """
     def __init__(self, in_channels, out_channels, base_block):
         super().__init__()
-        # Entry convolution
-        self.entry_conv = nn.Conv3d(in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         # Upsampling
         self.upsample = nn.Upsample(scale_factor=(1, 2, 2), mode='nearest')
+        # Entry convolution
+        self.entry_conv = nn.Conv3d(in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         # Base block
         if base_block == 'cbam':
             self.base_block = CBAM3D(in_channels)
@@ -149,8 +149,8 @@ class UpsampleConvBlock3D(nn.Module):
         self.batch_norm = nn.BatchNorm3d(out_channels)
 
     def forward(self, x):
-        x = torch.selu(self.entry_conv(x))
         x = self.upsample(x)
+        x = torch.selu(self.entry_conv(x))
         x = self.base_block(x)
         x = torch.selu(self.output_conv1(x))
         x = torch.selu(self.output_conv2(x))

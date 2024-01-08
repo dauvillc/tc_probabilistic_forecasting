@@ -4,7 +4,6 @@ Implements the training and evaluation tools using the Lightning framework.
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from math import prod
 from models.encoder import Encoder3d
 from models.decoder import Decoder3d
 from models.linear import CommonLinearModule, PredictionHead
@@ -61,29 +60,23 @@ class StormPredictionModel(pl.LightningModule):
                                  conv_blocks=self.model_cfg['encoder_depth'],
                                  hidden_channels=self.model_cfg['encoder_channels'])
         # Create the common linear module
-        # The output size of the CLM is (T * h * w * c) where T is the number of future steps,
-        # h and w are the width of the encoded latent space and c is an arbitrary number of channels.
-        # This is so that the vector can be reshaped into a tensor of shape (T, h, w, c) and fed
-        # into the decoder.
-        encoder_output_shape = self.encoder.output_shape
-        self.clm_output_channels = self.model_cfg['clm_output_channels']
-        clm_output_size = future_steps * prod(encoder_output_shape[2:]) * self.clm_output_channels
         self.common_linear_model = CommonLinearModule(self.encoder.output_shape,
+                                                      future_steps,
                                                       num_input_variables * future_steps,
-                                                      clm_output_size)
+                                                      cfg['model_hyperparameters']['clm_reduction_factor'])
         # Create the prediction heads
         self.prediction_heads = nn.ModuleDict({})
         self.loss_functions = {}
         for task, task_params in tabular_tasks.items():
             # Create the prediction head
-            self.prediction_heads[task] = PredictionHead(clm_output_size, task_params['output_size'], future_steps)
+            self.prediction_heads[task] = PredictionHead(self.common_linear_model.output_size,
+                                                         task_params['output_size'], future_steps)
 
         # Create the decoder if needed
         if len(datacube_tasks) > 0:
-            self.decoder_input_shape = (self.clm_output_channels, future_steps, *encoder_output_shape[2:])
             # The output of the decoder is all target datacubes concatenated along the channel dimension
             decoder_output_channels = sum([datacube_shape[0] for datacube_shape in datacube_tasks.values()])
-            self.decoder = Decoder3d(self.clm_output_channels, decoder_output_channels,
+            self.decoder = Decoder3d(self.encoder, decoder_output_channels,
                                      self.model_cfg['base_block'],
                                      self.model_cfg['encoder_depth'])
 
@@ -167,8 +160,9 @@ class StormPredictionModel(pl.LightningModule):
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)
         # Encode the past datacubes into a latent space
-        latent_space = self.encoder(past_datacubes)
+        encoder_outputs = self.encoder(past_datacubes)  # Returns the skip connections
         # Apply the common linear model to the latent space and the past variables
+        latent_space = encoder_outputs[-1]
         latent_space = self.common_linear_model(latent_space, past_variables)
         # Apply the prediction heads
         predictions = {}
@@ -180,8 +174,8 @@ class StormPredictionModel(pl.LightningModule):
         # Apply the decoder if needed
         if len(self.datacube_tasks) > 0:
             # Reshape the latent space from a vector to a tensor of shape (T, h, w, c)
-            latent_space = latent_space.view(latent_space.shape[0], *self.decoder_input_shape)
-            datacube_preds = self.decoder(latent_space)
+            latent_space = latent_space.view(-1, *self.encoder.output_shape)
+            datacube_preds = self.decoder(latent_space, encoder_outputs)
             # The target datacubes are concatenated along the channel dimension, retrieve them
             # individually
             start_channel = 0 
@@ -198,7 +192,8 @@ class StormPredictionModel(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.training_cfg['initial_lr'],
                                      weight_decay=self.training_cfg['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                                  T_max=self.training_cfg['epochs'])
+                                                                  T_max=self.training_cfg['epochs'],
+                                                                  eta_min=1e-6)
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": lr_scheduler,
