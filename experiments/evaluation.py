@@ -75,24 +75,43 @@ if __name__ == "__main__":
     predictions = trainer.predict(model, val_loader)
     # Select five random samples from the first batch
     random_indices = torch.randint(0, cfg['training_settings']['batch_size'], (5,))
-    # Select the corresponding targets and predictions
-    targets = next(iter(val_loader))[3]['tcir'][random_indices]
+    # Select the corresponding input, targets and predictions
+    batch = next(iter(val_loader))
+    inputs = batch[1]['tcir'][random_indices]
+    targets = batch[3]['tcir'][random_indices]
     predictions = predictions[0]['tcir'][random_indices]
-    # The targets and predictions are tensors of shape (5, 2, T, H, W) (the first
-    # channel is IR, the second is Microwave). We'll only show the last time step:
-    targets = targets[:, :, -1]
-    predictions = predictions[:, :, -1]
-    # Create a figure with four columns: the target IR, the predicted IR, the 
-    # target Microwave and the predicted Microwave
-    fig, axes = plt.subplots(5, 4, figsize=(20, 20))
-    for i, (target, prediction) in enumerate(zip(targets, predictions)):
-        axes[i, 0].imshow(target[0].cpu(), cmap='gray')
-        axes[i, 0].set_title('Target IR')
-        axes[i, 1].imshow(prediction[0].cpu(), cmap='gray')
-        axes[i, 1].set_title('Predicted IR')
-        axes[i, 2].imshow(target[1].cpu(), cmap='gray')
-        axes[i, 2].set_title('Target Microwave')
-        axes[i, 3].imshow(prediction[1].cpu(), cmap='gray')
-        axes[i, 3].set_title('Predicted Microwave')
-    # Log the figure
-    wandb.log({'val_visualization': wandb.Image(fig)})
+    # Retrieve the time steps
+    past_steps = cfg['experiment']['past_steps']
+    future_steps = cfg['experiment']['future_steps']
+    # Create a figure with two rows per sample
+    # The first row contains input 1, ..., input past_steps, target 1, prediction 1
+    # for the IR channel
+    # The second row contains input 1, ..., input past_steps, target 1, prediction 1
+    # for the PMW channel
+    fig, axes = plt.subplots(10, past_steps + 2, figsize=(20, 20))
+    # For each sample
+    for i in range(0, 10, 2):
+        # Plot the IR inputs
+        for j in range(past_steps):
+            axes[i, j].imshow(inputs[i // 2, 0, j].cpu())
+            axes[i, j].set_title(f"IR input {j + 1}")
+        # Plot the PMW inputs
+        for j in range(past_steps):
+            axes[i + 1, j].imshow(inputs[i // 2, 1, j].cpu())
+            axes[i + 1, j].set_title(f"PMW input {j + 1}")
+        # Plot the IR target
+        axes[i, past_steps].imshow(targets[i // 2, 0, 0].cpu())
+        axes[i, past_steps].set_title("IR target")
+        # Plot the PMW target
+        axes[i + 1, past_steps].imshow(targets[i // 2, 1, 0].cpu())
+        axes[i + 1, past_steps].set_title("PMW target")
+        # Plot the IR prediction
+        axes[i, past_steps + 1].imshow(predictions[i // 2, 0, 0].cpu())
+        axes[i, past_steps + 1].set_title("IR prediction")
+        # Plot the PMW prediction
+        axes[i + 1, past_steps + 1].imshow(predictions[i // 2, 1, 0].cpu())
+        axes[i + 1, past_steps + 1].set_title("PMW prediction")
+    # Save the figure
+    wandb.log({"predictions": wandb.Image(fig)})
+
+
