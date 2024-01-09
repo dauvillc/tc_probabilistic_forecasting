@@ -181,8 +181,8 @@ class StormPredictionModel(pl.LightningModule):
             # The target datacubes are concatenated along the channel dimension, retrieve them
             # individually
             start_channel = 0 
-            for task, datacube_shape in self.datacube_tasks.items():
-                end_channel = start_channel + datacube_shape[0]
+            for task, settings in self.datacube_tasks.items():
+                end_channel = start_channel + settings['output_channels']
                 predictions[task] = datacube_preds[:, start_channel:end_channel]
                 start_channel = end_channel
         return predictions
