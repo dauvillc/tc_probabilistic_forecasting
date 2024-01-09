@@ -81,6 +81,9 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     train_dataset.normalize_inputs()
     train_dataset.normalize_outputs(save_statistics=True)
     val_dataset.normalize_inputs(other_dataset=train_dataset)
+    # For the validation dataset, the variables are not normalized so that the metrics are
+    # interpretable (the predictions are denormalized before computing the metrics).
+    val_dataset.normalize_outputs(other_dataset=train_dataset, datacubes_only=True)
     # Create the train and validation data loaders
     batch_size = cfg['training_settings']['batch_size']
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)

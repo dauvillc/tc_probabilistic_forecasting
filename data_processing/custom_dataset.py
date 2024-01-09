@@ -160,7 +160,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             self.datacubes[name] = (self.datacubes[name] - self.input_datacube_means[name]) / self.input_datacube_stds[name]
 
 
-    def normalize_outputs(self, other_dataset=None, save_statistics=False):
+    def normalize_outputs(self, other_dataset=None, save_statistics=False, datacubes_only=False):
         """
         Normalizes the output data (variables and datacubes), by subtracting the mean
         and dividing by the standard deviation. For the datacubes, the statistics are
@@ -173,6 +173,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             If not None, the statistics are not computed but taken from other_dataset.
         save_statistics: bool, optional
             If True, the statistics are saved in the tasks dictionary.
+        datacubes_only: bool, optional
+            If True, only the datacubes are normalized.
         """
         if other_dataset is None:
             # Compute the statistics from the output variables.
@@ -189,8 +191,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             self.output_variable_stds = other_dataset.output_variable_stds
             self.output_datacube_means = other_dataset.output_datacube_means
             self.output_datacube_stds = other_dataset.output_datacube_stds
-        # Normalize the output variables.
-        self.output_trajectories = (self.output_trajectories - self.output_variable_means) / self.output_variable_stds
+        # Normalize the output variables if needed.
+        if not datacubes_only:
+            self.output_trajectories = (self.output_trajectories - self.output_variable_means) / self.output_variable_stds
         # Normalize the output datacubes.
         for name in self.output_datacubes:
             self.datacubes[name] = (self.datacubes[name] - self.output_datacube_means[name]) / self.output_datacube_stds[name]
