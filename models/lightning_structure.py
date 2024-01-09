@@ -37,11 +37,14 @@ class StormPredictionModel(pl.LightningModule):
             The names of the output variables for the task.
         - 'output_size': int
             The number of values to predict for the task.
-        - 'distrib_obj': Distribution object implementing loss_functio, metrics
+        - 'distrib_obj': Distribution object implementing loss_function, metrics
             and optionally activation. 
     datacube_tasks: Mapping of str to tuple
         The tasks whose targets are datacubes, with the keys being the task names and the values
-        being the shape of the corresponding datacube, as (C, T, H, W).
+        being:
+        - 'output_channels: int
+            The number of channels of the output datacube.
+        - 'distrib_obj': Distribution object implementing loss_function and metrics.
     cfg: dict
         The configuration dictionary.
     """
@@ -75,7 +78,7 @@ class StormPredictionModel(pl.LightningModule):
         # Create the decoder if needed
         if len(datacube_tasks) > 0:
             # The output of the decoder is all target datacubes concatenated along the channel dimension
-            decoder_output_channels = sum([datacube_shape[0] for datacube_shape in datacube_tasks.values()])
+            decoder_output_channels = sum([task['output_channels'] for task in datacube_tasks.values()])
             self.decoder = Decoder3d(self.encoder, decoder_output_channels,
                                      self.model_cfg['base_block'],
                                      self.model_cfg['encoder_depth'])
@@ -116,7 +119,6 @@ class StormPredictionModel(pl.LightningModule):
             self.log(f"val_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the losses for the datacube tasks
         for task, task_params in self.datacube_tasks.items():
-            #TODO denormalize the predictions
             losses[task] = nn.MSELoss()(predictions[task], future_datacubes[task])
             self.log(f"val_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
