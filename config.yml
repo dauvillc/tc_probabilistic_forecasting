@@ -9,6 +9,7 @@ paths:
   tcir: /home/cdauvill/scratch/tcir/TCIR-ATLN_EPAC_WPAC.h5
   tcir_info_preprocessed: /home/cdauvill/scratch/tcir/tcir_info_preprocessed_small.csv
   tcir_datacube_preprocessed: /home/cdauvill/scratch/tcir/tcir_datacube_preprocessed_small.csv
+  checkpoints: /home/cdauvill/scratch/checkpoints/
 
 tcir:
   # Fraction of the tcir dataset to use (use less data for debugging)

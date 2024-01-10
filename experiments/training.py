@@ -75,7 +75,7 @@ if __name__ == "__main__":
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
 
-    # Load the configuration file
+    # Load the training configuration file
     with open("training_cfg.yml", "r") as f:
         cfg = yaml.safe_load(f)
         experiment_cfg = cfg["experiment"]
@@ -83,6 +83,10 @@ if __name__ == "__main__":
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
     past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
+
+    # Load the project configuration file
+    with open("config.yml", "r") as f:
+        config = yaml.safe_load(f)
 
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
@@ -113,7 +117,8 @@ if __name__ == "__main__":
     # Train the models. Save the train and validation losses
     trainer = pl.Trainer(accelerator='gpu', precision=training_cfg['precision'],
                          max_epochs=training_cfg['epochs'], logger=wandb_logger,
-                         callbacks=[ModelCheckpoint(monitor='val_loss', mode='min'),
+                         callbacks=[ModelCheckpoint(monitor='val_loss', mode='min',
+                                                    dirpath=config['paths']['checkpoints']),
                                     LearningRateMonitor()])
     trainer.fit(model, train_loader, val_loader)
 

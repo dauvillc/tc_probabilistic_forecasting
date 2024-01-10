@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # ===== MODEL RECONSTUCTION ===== #
     # Retrieve the checkpoint from wandb
     artifact = run.use_artifact(f'arches/tc_prediction/model-{run_id}:best', type="model")
-    artifact_dir = artifact.download()
+    artifact_dir = artifact.download('/home/cdauvill/scratch/artifacts/')
     checkpoint = Path(artifact_dir) / 'model.ckpt'
     # Reconstruct the model from the checkpoint
     datacube_shape = train_dataset.datacube_shape('tcir')
@@ -66,7 +66,7 @@ if __name__ == "__main__":
                                                       input_datacube_shape=datacube_shape,
                                                       num_input_variables=num_input_variables,
                                                       tabular_tasks=tasks,
-                                                      datacube_tasks={'tcir': datacube_shape},
+                                                      datacube_tasks={'tcir': {'output_channels': 2}},
                                                       cfg=cfg)
     trainer = pl.Trainer(accelerator='gpu')
 
