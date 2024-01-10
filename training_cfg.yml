@@ -1,9 +1,11 @@
 experiment:
-  name: debugging
+  name: tcir_cbam_large
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
   future_steps: 4
+  # Size of the input and output patches, in pixels (resolution=0.07°)
+  patch_size: 128
 tasks:
   # Parameters specific to each task
   # Output distribution:
@@ -23,19 +25,19 @@ tasks:
     # output_variables: ['LAT', 'LON']
     # distribution: deterministic
 training_settings:
-  epochs: 50
+  epochs: 100
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
   # Learning-related params
-  initial_lr: 0.01
+  initial_lr: 0.0001
   # Weight decay
   weight_decay: 0
 model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
-  base_block: conv
+  base_block: cbam
   # Number of convolutional blocks (Each block has 2 Conv layers)
-  encoder_depth: 4
+  encoder_depth: 5
   # Number of channels in the first hidden layer
   encoder_channels: 8
   # Reduction factor in the Common Linear Module

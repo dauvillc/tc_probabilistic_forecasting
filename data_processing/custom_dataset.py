@@ -119,11 +119,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             # and is then center-cropped to 64x64 pixels.
             self.transforms = v2.Compose([
                 v2.RandomRotation(degrees=(-180, 179)),
-                v2.CenterCrop(64)
+                v2.CenterCrop(cfg['experiment']['patch_size'])
             ])
         else:
             # Otherwise, just crop the center of the datacube.
-            self.transforms = v2.Compose([v2.CenterCrop(64)])
+            self.transforms = v2.Compose([v2.CenterCrop(cfg['experiment']['patch_size'])])
 
     def normalize_inputs(self, other_dataset=None):
         """
