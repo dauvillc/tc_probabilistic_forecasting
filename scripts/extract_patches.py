@@ -15,7 +15,7 @@ import argparse
 import time
 import yaml
 from tqdm import tqdm
-from data_processing.datasets import load_ibtracs_data
+from data_processing.datasets import load_tcir
 
 
 def find_nearest(array, val):
@@ -69,8 +69,8 @@ def extract_patches(vartype, args):
         print("No pressure levels specified. Exiting.")
         return
 
-    # Loads the preprocessed IBTrACS data
-    storms_data = load_ibtracs_data()
+    # Loads the preprocessed TCIR dataset
+    storms_data, _ = load_tcir()
 
     # Retrieves the first occurence of each storm
     storm_initial_times = storms_data[['SID', 'ISO_TIME']].groupby('SID').first().rename(columns={'ISO_TIME': 'FIRST_MONTH'}).reset_index()
@@ -135,8 +135,8 @@ def extract_patches(vartype, args):
                 center_lon = find_nearest(dataset.coords['longitude'].data, row.LON)
                 center_lat = find_nearest(dataset.coords['latitude'].data, row.LAT)
                 # The treatment differs here depending on whether rescaling is required or not
-                offsets_lon = np.arange(-patch_size, patch_size + 1)
-                offsets_lat = np.arange(patch_size, -patch_size - 1, -1)
+                offsets_lon = np.arange(-patch_size // 2, patch_size // 2)
+                offsets_lat = -offsets_lon
                 if rescale_res is None:
                     # Define the area to extract
                     area_lon = center_lon + offsets_lon * spatial_res
@@ -161,9 +161,8 @@ def extract_patches(vartype, args):
                 # dimensions (offset in pixels between a location and the patch's center), which are coherent across all patches.
                 patch = patch.rename_dims({'longitude': 'h_pixel_offset', 'latitude': 'v_pixel_offset'})
                 patch = patch.drop_vars(['longitude', 'latitude'])
-                relative_coords = np.arange(-patch_size, patch_size + 1)
-                patch = patch.assign_coords(v_pixel_offset=('v_pixel_offset', relative_coords),
-                                                      h_pixel_offset=('h_pixel_offset', relative_coords))
+                patch = patch.assign_coords(v_pixel_offset=('v_pixel_offset', offsets_lon),
+                                                      h_pixel_offset=('h_pixel_offset', offsets_lon))
 
                 # Some variables contain (extremely) rare missing values (of the order of 1 every 20 years of data
                 # and 69 variables). The following replaces those missing values with the mean of the variable
@@ -191,8 +190,8 @@ def extract_patches(vartype, args):
 if __name__ == "__main__":
     # ======= ARGUMENT PARSING =======
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--patch_size', action='store', type=int, default=5,
-            help="Number of pixels to include in every direction (NSEW) around the storm's center. Default to 5 pixels (sides of 11 pixels).") 
+    parser.add_argument('-p', '--patch_size', action='store', type=int, default=128,
+                        help="Size of the patches to extract, in pixels - defaults to 128")
     parser.add_argument('--res', action='store', type=float, default=0.25,
             help="Spatial resolution in degrees - defaults to 0.25°")
     parser.add_argument('--rescale', action='store', type=float, default=None,
