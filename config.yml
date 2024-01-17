@@ -7,8 +7,8 @@ paths:
   hursat_b1_preprocessed: /scratch/cdauvill/hursat-b1-preprocessed/
   hursat_b1_cache: /scratch/cdauvill/hursat-b1-preprocessed/cache.nc
   tcir: /home/cdauvill/scratch/tcir/TCIR-ATLN_EPAC_WPAC.h5
-  tcir_info_preprocessed: /home/cdauvill/scratch/tcir/tcir_info_preprocessed_small.csv
-  tcir_datacube_preprocessed: /home/cdauvill/scratch/tcir/tcir_datacube_preprocessed_small.csv
+  tcir_info_preprocessed: /home/cdauvill/scratch/tcir/tcir_info_preprocessed.csv
+  tcir_datacube_preprocessed: /home/cdauvill/scratch/tcir/tcir_datacube_preprocessed.csv
   checkpoints: /home/cdauvill/scratch/checkpoints/
 
 tcir:

@@ -108,9 +108,11 @@ if __name__ == "__main__":
     # Initialize the model
     num_input_variables = len(input_variables)
     datacube_shape = train_dataset.datacube_shape('tcir')
-    datacube_task = {'tcir': {'output_channels': 2}}
+    # datacube_task = {'tcir': {'output_channels': 2}}
+    datacube_task = {}
     model = StormPredictionModel(datacube_shape, num_input_variables, tasks,
                                  datacube_task,
+                                 train_dataset, val_dataset,
                                  cfg)
 
     # ====== MODELS TRAINING ====== #
