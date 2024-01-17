@@ -72,7 +72,8 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     # Create the train and validation datasets.
     train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tabular_tasks,
                                            {'tcir': train_patches}, ['tcir'], datacube_tasks,
-                                           cfg, random_rotations=True)
+                                           cfg,
+                                           random_rotations=cfg['training_settings']['data_augmentation'])
     val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tabular_tasks,
                                          {'tcir': val_patches}, ['tcir'], datacube_tasks,
                                          cfg, random_rotations=False)

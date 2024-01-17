@@ -96,8 +96,7 @@ def main():
         experiment_cfg = cfg["experiment"]
         tasks_cfg = cfg["tasks"]
         training_cfg = cfg["training_settings"]
-        model_cfg = cfg["model_hyperparameters"]
-    past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
+    past_steps = experiment_cfg["past_steps"]
 
     # Load the project configuration file
     with open("config.yml", "r") as f:
@@ -108,6 +107,8 @@ def main():
     
     # Replace the default values of the configuration file by the ones from the sweep
     cfg = update(cfg, wandb.config)
+    # Disable data augmentation for the sweep, to make the runs quicker
+    cfg['training_settings']['data_augmentation'] = False
 
     # ====== TASKS DEFINITION ====== #
     tasks = create_tasks(tasks_cfg)
