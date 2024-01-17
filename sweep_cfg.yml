@@ -1,0 +1,19 @@
+name: sweep_vmax_r34_mslp_loc_deterministic
+program: experiments/sweep_training.py
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  training_settings:
+    parameters:
+      initial_lr:
+        values: [0.001]
+  model_hyperparameters:
+    parameters:
+      encoder_depth:
+        values: [7]
+      encoder_channels:
+        values: [2, 4, 8]
+      clm_reduction_factor:
+        values: [2, 4, 8]
