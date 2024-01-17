@@ -160,7 +160,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             self.datacubes[name] = (self.datacubes[name] - self.input_datacube_means[name]) / self.input_datacube_stds[name]
 
 
-    def normalize_outputs(self, other_dataset=None, save_statistics=False, datacubes_only=False):
+    def normalize_outputs(self, other_dataset=None, save_statistics=False):
         """
         Normalizes the output data (variables and datacubes), by subtracting the mean
         and dividing by the standard deviation. For the datacubes, the statistics are
@@ -173,8 +173,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             If not None, the statistics are not computed but taken from other_dataset.
         save_statistics: bool, optional
             If True, the statistics are saved in the tasks dictionary.
-        datacubes_only: bool, optional
-            If True, only the datacubes are normalized.
         """
         if other_dataset is None:
             # Compute the statistics from the output variables.
@@ -191,9 +189,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             self.output_variable_stds = other_dataset.output_variable_stds
             self.output_datacube_means = other_dataset.output_datacube_means
             self.output_datacube_stds = other_dataset.output_datacube_stds
-        # Normalize the output variables if needed.
-        if not datacubes_only:
-            self.output_trajectories = (self.output_trajectories - self.output_variable_means) / self.output_variable_stds
+        # Normalize the output variables
+        self.output_trajectories = (self.output_trajectories - self.output_variable_means) / self.output_variable_stds
         # Normalize the output datacubes.
         for name in self.output_datacubes:
             self.datacubes[name] = (self.datacubes[name] - self.output_datacube_means[name]) / self.output_datacube_stds[name]
@@ -203,6 +200,34 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
                 output_variables = self.get_task_output_variables(task)
                 self.output_tabular_tasks[task]['means'] = self.output_variable_means[output_variables]
                 self.output_tabular_tasks[task]['stds'] = self.output_variable_stds[output_variables]
+    
+    def denormalize_tabular_target(self, variables):
+        """
+        Denormalize a batch of target variables, using the constants stored in the dataset.
+        
+        Parameters
+        ----------
+        variables: Mapping of str to torch.Tensor
+            The variables to denormalize. The keys are tasks names and the values are
+            torch.Tensors of shape (batch_size, T * K) where K is the number of variables
+            in the task.
+        
+        Returns
+        -------
+        denormalized_variables: Mapping of str to torch.Tensor
+            Structure identical to variables, but with the denormalized values.
+        """
+        denormalized_variables = {}
+        for task in variables:
+            # Retrieve the normalization constants for the task and convert them to tensors.
+            means = torch.tensor(self.output_tabular_tasks[task]['means'].values, dtype=torch.float32)
+            stds = torch.tensor(self.output_tabular_tasks[task]['stds'].values, dtype=torch.float32)
+            # Load them to the same device as the variables.
+            means = means.to(variables[task].device)
+            stds = stds.to(variables[task].device)
+            # Denormalize the variables.
+            denormalized_variables[task] = variables[task] * stds + means
+        return denormalized_variables
 
     def get_normalization_constants(self):
         """
