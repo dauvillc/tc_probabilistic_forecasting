@@ -1,5 +1,5 @@
 """
-Uses a CNN with the Multiple Quantile Loss.
+Trains a model on the TC intensity forecasting task.
 """
 import sys
 sys.path.append("./")
