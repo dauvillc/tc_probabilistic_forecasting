@@ -208,7 +208,7 @@ class StormPredictionModel(pl.LightningModule):
                                      weight_decay=self.training_cfg['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                   T_max=self.training_cfg['epochs'],
-                                                                  eta_min=1e-7)
+                                                                  eta_min=self.cfg['training_settings']['final_lr'])
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": lr_scheduler,

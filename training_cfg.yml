@@ -1,5 +1,5 @@
 experiment:
-  name: vmax_all_optim
+  name: vmax_r34_mslp_loc_smallencoder
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -29,17 +29,20 @@ training_settings:
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
-  # Learning-related params
-  initial_lr: 0.001
   # Weight decay
   weight_decay: 0
+  # Whether to enable data augmentation
+  data_augmentation: true
+  # Learning-related params
+  initial_lr: 0.001
+  final_lr: 0.0000001
 model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
   base_block: conv
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 7
   # Number of channels in the first hidden layer
-  encoder_channels: 2
+  encoder_channels: 8
   # Reduction factor in the Common Linear Module
-  clm_reduction_factor: 4
+  clm_reduction_factor: 8
 
