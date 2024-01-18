@@ -69,11 +69,15 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     print(f"Number of trajectories in the test set: {len(test_trajs)}")
 
     # ====== DATASET CREATION ====== #
+    # Data augmentation is only applied to the training dataset if requested
+    apply_data_aug = False
+    if 'data_augmentation' in cfg['training_settings']:
+        apply_data_aug = cfg['training_settings']['data_augmentation']
     # Create the train and validation datasets.
     train_dataset = SuccessiveStepsDataset(train_trajs, input_variables, tabular_tasks,
                                            {'tcir': train_patches}, ['tcir'], datacube_tasks,
                                            cfg,
-                                           random_rotations=cfg['training_settings']['data_augmentation'])
+                                           random_rotations=apply_data_aug)
     val_dataset = SuccessiveStepsDataset(val_trajs, input_variables, tabular_tasks,
                                          {'tcir': val_patches}, ['tcir'], datacube_tasks,
                                          cfg, random_rotations=False)
