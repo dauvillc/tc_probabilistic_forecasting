@@ -89,9 +89,11 @@ class StormPredictionModel(pl.LightningModule):
                                      self.model_cfg['base_block'],
                                      self.model_cfg['encoder_depth'])
 
-    def training_step(self, batch, batch_idx):
+    
+    def compute_losses(self, batch, train_or_val='train'):
         """
-        Implements a training step.
+        Computes the losses for a single batch (subfunction of training_step
+        and validation_step).
         """
         past_variables, past_datacubes, future_variables, future_datacubes = batch
         predictions = self.forward(past_variables, past_datacubes)
@@ -99,34 +101,37 @@ class StormPredictionModel(pl.LightningModule):
         losses = {}
         for task, task_params in self.tabular_tasks.items():
             losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task])
-            self.log(f"train_loss_{task}", losses[task], on_step=False, on_epoch=True)
+            self.log(f"{train_or_val}_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the losses for the datacube tasks
         for task, task_params in self.datacube_tasks.items():
             losses[task] = nn.MSELoss()(predictions[task], future_datacubes[task])
-            self.log(f"train_loss_{task}", losses[task], on_step=False, on_epoch=True)
+            self.log(f"{train_or_val}_loss_{task}", losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
-        total_loss = sum(losses.values())
-        self.log("train_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
+        # In the case of a single task, the total loss is the loss of the trained task
+        if self.training_cfg['trained_task'] is not None:
+            total_loss = losses[self.training_cfg['trained_task']]
+        else:
+            total_loss = sum(losses.values())
+        self.log(f"{train_or_val}_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
         return total_loss
+
+
+    def training_step(self, batch, batch_idx):
+        """
+        Implements a training step.
+        """
+        return self.compute_losses(batch, train_or_val='train')
 
     def validation_step(self, batch, batch_idx):
         """
         Implements a validation step.
         """
+        # Compute the losses
+        total_loss = self.compute_losses(batch, train_or_val='val')
+
+        # The rest of the function computes the metrics for each task
         past_variables, past_datacubes, future_variables, future_datacubes = batch
         predictions = self.forward(past_variables, past_datacubes)
-        # Compute the indivual losses for each tabular task
-        losses = {}
-        for task, task_params in self.tabular_tasks.items():
-            losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task])
-            self.log(f"val_loss_{task}", losses[task], on_step=False, on_epoch=True)
-        # Compute the losses for the datacube tasks
-        for task, task_params in self.datacube_tasks.items():
-            losses[task] = nn.MSELoss()(predictions[task], future_datacubes[task])
-            self.log(f"val_loss_{task}", losses[task], on_step=False, on_epoch=True)
-        # Compute the total loss
-        total_loss = sum(losses.values())
-        self.log("val_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
 
         # Before computing the metrics, we'll denormalize the target values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
@@ -204,11 +209,30 @@ class StormPredictionModel(pl.LightningModule):
         """
         Configures the optimizer.
         """
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.training_cfg['initial_lr'],
+        # If we are fine-tuning, freeze the encoder
+        if self.training_cfg["freeze_encoder"]:
+            print("/!\WARNING/!\ The encoder is frozen, only the decoder is trained.")
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+            # Set the encoder in eval mode so that the batchnorm layers are not updated
+            self.encoder.eval()
+        # If a single task is used, only update the parameters of the prediction head
+        if self.training_cfg['trained_task'] is not None:
+            print(f"/!\WARNING/!\ Only the parameters of the {self.training_cfg['trained_task']} "
+                  "prediction head are updated.")
+            # Freeze the parameters of the other prediction heads
+            for task in self.tabular_tasks.keys():
+                if task != self.training_cfg['trained_task']:
+                    for param in self.prediction_heads[task].parameters():
+                        param.requires_grad = False
+        
+        # Be careful to only update the parameters that require gradients
+        updated_params = [p for p in self.parameters() if p.requires_grad]
+        optimizer = torch.optim.Adam(updated_params, lr=self.training_cfg['initial_lr'],
                                      weight_decay=self.training_cfg['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                   T_max=self.training_cfg['epochs'],
-                                                                  eta_min=self.cfg['training_settings']['final_lr'])
+                                                                  eta_min=self.training_cfg['final_lr'])
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": lr_scheduler,
