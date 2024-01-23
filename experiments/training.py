@@ -5,6 +5,8 @@ import sys
 sys.path.append("./")
 import pytorch_lightning as pl
 import yaml
+import wandb
+from pathlib import Path
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from models.lightning_structure import StormPredictionModel
@@ -98,6 +100,10 @@ if __name__ == "__main__":
     train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
 
     # ====== W+B LOGGER ====== #
+    # Initialize W&B
+    current_run = wandb.init(project="tc_prediction",
+                             name=experiment_cfg['name'],
+                             job_type="training")
     # Initialize the W+B logger
     wandb_logger = WandbLogger(project="tc_prediction", name=experiment_cfg['name'], log_model="all")
     # Log the config and hyperparameters
@@ -110,10 +116,33 @@ if __name__ == "__main__":
     datacube_shape = train_dataset.datacube_shape('tcir')
     # datacube_task = {'tcir': {'output_channels': 2}}
     datacube_task = {}
-    model = StormPredictionModel(datacube_shape, num_input_variables, tasks,
-                                 datacube_task,
-                                 train_dataset, val_dataset,
-                                 cfg)
+    # If training from scratch, create a new model
+    if experiment_cfg['use-pre-trained-id'] is None:
+        model = StormPredictionModel(datacube_shape, num_input_variables, tasks,
+                                     datacube_task,
+                                     train_dataset, val_dataset,
+                                     cfg)
+    # If fine-tuning, load the model from a previous run
+    else:
+        # Load the model from a previous run
+        run_id = experiment_cfg['use-pre-trained-id']
+        try:
+            print("Using model from run ", run_id)
+            artifact = current_run.use_artifact(f'arches/tc_prediction/model-{run_id}:latest')
+            artifact_dir = artifact.download('/home/cdauvill/scratch/artifacts/')
+        except wandb.errors.CommError:
+            print(f"Could not find the model {run_id} in the W&B artifacts. ")
+            sys.exit(1)
+        checkpoint = Path(artifact_dir) / 'model.ckpt'
+        # Reconstruct the model from the checkpoint
+        model = StormPredictionModel.load_from_checkpoint(checkpoint,
+                                                          input_datacube_shape=datacube_shape,
+                                                          num_input_variables=num_input_variables,
+                                                          tabular_tasks=tasks,
+                                                          train_dataset=train_dataset,
+                                                          val_dataset=val_dataset,
+                                                          datacube_tasks=datacube_task,
+                                                          cfg=cfg)
 
     # ====== MODELS TRAINING ====== #
     # Train the models. Save the train and validation losses
