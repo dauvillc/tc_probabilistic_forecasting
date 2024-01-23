@@ -82,16 +82,18 @@ class PredictionHead(nn.Module):
     ----------
     input_size: int
         The size of the input latent space.
-    output_size: int
+    n_output_vars: int
         The number of predicted variables.
     future_steps: int
         The number of future steps to predict.
     """
-    def __init__(self, input_size, output_size, future_steps):
+    def __init__(self, input_size, n_output_vars, future_steps):
         super().__init__()
-        self.output_size = output_size
+        self.n_output_vars = n_output_vars
         self.future_steps = future_steps
-        self.linear = nn.Linear(input_size, output_size * future_steps)
+        self.output_size = n_output_vars * future_steps
+        # Fully connected layer
+        self.fc = nn.Linear(input_size, self.output_size)
 
     def forward(self, latent_space):
         """
@@ -101,10 +103,10 @@ class PredictionHead(nn.Module):
             The latent space produced by the common linear module.
         Returns
         -------
-        torch tensor of dimensions (N, future_steps, output_size)
+        torch tensor of dimensions (N, future_steps, n_output_vars)
             The prediction.
         """
-        # Apply the linear layer
-        prediction = self.linear(latent_space)
+        # Apply the fully connected layer
+        prediction = self.fc(latent_space)
         # Reshape the prediction
-        return prediction.reshape(-1, self.future_steps, self.output_size)
+        return prediction.reshape(-1, self.future_steps, self.n_output_vars)
