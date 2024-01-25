@@ -29,7 +29,7 @@ class Encoder3d(nn.Module):
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])
         for i in range(0, conv_blocks):
-            new_c = 2 ** i * hidden_channels
+            new_c = (i + 1) * hidden_channels
             # Save the number of channels in the output of the block
             self.output_channels.append(new_c)
             self.conv_blocks.append(DownsamplingBlock3D(c, new_c, base_block)) # DxHxW -> DxH/2xW/2
