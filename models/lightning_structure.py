@@ -57,7 +57,7 @@ class StormPredictionModel(pl.LightningModule):
         super().__init__()
         self.tabular_tasks = tabular_tasks
         self.datacube_tasks = datacube_tasks
-        self.train_datset, self.val_dataset = train_dataset, val_dataset
+        self.train_dataset, self.val_dataset = train_dataset, val_dataset
         self.model_cfg = cfg['model_hyperparameters']
         self.training_cfg = cfg['training_settings']
         self.input_datacube_shape = input_datacube_shape
@@ -133,7 +133,7 @@ class StormPredictionModel(pl.LightningModule):
         past_variables, past_datacubes, future_variables, future_datacubes = batch
         predictions = self.forward(past_variables, past_datacubes)
 
-        # Before computing the metrics, we'll denormalize the target values, so that metrics are
+        # Before computing the metrics, we'll denormalize the future values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
         future_variables = self.val_dataset.denormalize_tabular_target(future_variables)
 
@@ -141,7 +141,7 @@ class StormPredictionModel(pl.LightningModule):
         for task, task_params in self.tabular_tasks.items():
             # Denormalize the predictions using the task-specific denormalization function
             # so that the metrics are computed in the original scale
-            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task)
+            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task, self.train_dataset)
             for metric_name, metric in task_params['distrib_obj'].metrics.items():
                 # Compute the metric in the original scale
                 metric_value = metric(predictions[task], future_variables[task])
@@ -166,7 +166,7 @@ class StormPredictionModel(pl.LightningModule):
         ----------
         past_variables: Mapping of str to tensor
             The past variables, with the keys being the names of the variables and the values
-            being batches of shape (N, P * number of variables).
+            being batches of shape (N, P).
         past_datacubes: Mapping of str to tensor
             The past datacubes, with the keys being the names of the datacubes and the values
             being batches of shape (N, C, P, H, W).

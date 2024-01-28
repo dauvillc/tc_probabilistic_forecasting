@@ -33,13 +33,13 @@ def create_output_distrib(distrib_name, tasks):
     distribution : the distribution object.
     """
     if distrib_name in ['quantile_composite', 'qc']:
-        distribution = QuantileCompositeDistribution(0, 90, tasks)
+        distribution = QuantileCompositeDistribution(0, 90)
     elif distrib_name == 'normal':
-        distribution = NormalDistribution(tasks)
+        distribution = NormalDistribution()
     elif distrib_name == 'deterministic':
         # Using a dummy distribution that is deterministic allows to use the same
         # code for deterministic and probabilistic models
-        distribution = DeterministicDistribution(tasks)
+        distribution = DeterministicDistribution()
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution

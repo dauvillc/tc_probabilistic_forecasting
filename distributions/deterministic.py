@@ -33,11 +33,8 @@ class DeterministicDistribution:
 
     Parameters
     ----------
-    tasks: dict
-        Pointer to the tasks dictionary, which contains the normalization constants.
     """
-    def __init__(self, tasks):
-        self.tasks = tasks
+    def __init__(self):
         # The distribution P(y|x) is deterministic, so it is characterized by a single
         # parameter, which is the predicted value.
         self.n_parameters = 1
@@ -73,7 +70,7 @@ class DeterministicDistribution:
         """
         return y
     
-    def denormalize(self, predicted_params, task):
+    def denormalize(self, predicted_params, task, dataset):
         """
         Denormalizes the predicted values.
 
@@ -82,6 +79,8 @@ class DeterministicDistribution:
         predicted_params : torch.Tensor of shape (N, T, V)
             The predicted values for each sample and time step.
         task : str
+        dataset : dataset, as an object that implements the
+            get_normalization_constants method.
 
         Returns
         -------
@@ -89,8 +88,7 @@ class DeterministicDistribution:
             The denormalized predicted values.
         """
         # Retrieve the normalization constants, of shape (T * V)
-        means = torch.tensor(self.tasks[task]['means'].values, dtype=torch.float32)
-        stds = torch.tensor(self.tasks[task]['stds'].values, dtype=torch.float32)
+        means, stds = dataset.get_normalization_constants(task)
         # Reshape the means and stds to be broadcastable and move them to the same device
         # as the predictions
         means = means.view(predicted_params.shape[1:]).to(predicted_params.device)

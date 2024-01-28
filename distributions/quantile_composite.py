@@ -17,11 +17,8 @@ class QuantileCompositeDistribution:
         The minimum value of the distribution.
     max_value : float
         The maximum value of the distribution.
-    tasks : dict
-        Pointer to the tasks dictionary, which contains the normalization constants.
     """
-    def __init__(self, min_value, max_value, tasks):
-        self.tasks = tasks
+    def __init__(self, min_value, max_value):
         self.quantiles = np.linspace(0.01, 0.99, 99)
         self.n_parameters = len(self.quantiles)
         self.min_value = min_value
@@ -45,7 +42,7 @@ class QuantileCompositeDistribution:
         self.cdf = Quantiles_eCDF(self.quantiles, min_value, max_value)
         self.inverse_cdf = Quantiles_inverse_eCDF(self.quantiles, min_value, max_value) 
 
-    def denormalize(self, predicted_params, task):
+    def denormalize(self, predicted_params, task, dataset):
         """
         Denormalizes the predicted values.
 
@@ -54,6 +51,7 @@ class QuantileCompositeDistribution:
         predicted_params : torch.Tensor of shape (N, T, Q)
             The predicted values for each sample and time step.
         task : str
+        dataset: dataset object that implements the get_normalization_constants method.
 
         Returns
         -------
@@ -61,8 +59,7 @@ class QuantileCompositeDistribution:
             The denormalized predicted quantiles.
         """
         # Retrieve the normalization constants, of shape (T,)
-        means = torch.tensor(self.tasks[task]['means'].values, dtype=torch.float32)
-        stds = torch.tensor(self.tasks[task]['stds'].values, dtype=torch.float32)
+        means, stds = dataset.get_normalization_constants(task)
         # Reshape the means and stds to be broadcastable and move them to the same device
         # as the predictions
         means = means.view(1, -1, 1).to(predicted_params.device)

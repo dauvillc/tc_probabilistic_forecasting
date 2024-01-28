@@ -51,13 +51,17 @@ class CommonLinearModule(nn.Module):
         ----------
         latent_space: torch tensor of dimensions (N, c, d, h, w)
             The latent space produced by the encoder.
-        past_vars: torch tensor of dimensions (N, n_input_vars)
-            The past variables.
+        past_vars: Mapping of str to torch tensor
+            The past variables. The keys are the variable names, and the values
+            are torch tensors of dimensions (N, P) where P is the number of past
+            steps.
         Returns
         -------
         torch tensor of dimensions (N, output_depth, h, w)
             The output of the linear module.
         """
+        # Concatenate the past variables into a single tensor
+        past_vars = torch.cat(list(past_vars.values()), dim=1)
         # Flatten the latent space
         latent_space = latent_space.reshape(-1, self.input_size)
         # Embed the past variables

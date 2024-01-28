@@ -48,11 +48,8 @@ class NormalDistribution:
 
     Parameters
     ----------
-    tasks: dict
-        Pointer to the tasks dictionary, which contains the normalization constants.
     """
-    def __init__(self, tasks):
-        self.tasks = tasks
+    def __init__(self):
         self.n_parameters = 2
 
         # Metrics
@@ -125,7 +122,7 @@ class NormalDistribution:
         loss = normal_crps(mu, valid_sigma, y)
         return loss.mean()
 
-    def denormalize(self, predicted_params, task):
+    def denormalize(self, predicted_params, task, dataset):
         """
         De-normalizes the predicted parameters of the distribution.
 
@@ -135,6 +132,8 @@ class NormalDistribution:
             The predicted parameters of the normal distribution for each sample and time step.
         task : str
             The name of the task.
+        dataset : dataset, as an object that implements the
+            get_normalization_constants method.
 
         Returns
         -------
@@ -142,8 +141,7 @@ class NormalDistribution:
             The de-normalized parameters.
         """
         # Get the normalization constants from the tasks dictionary
-        means = torch.tensor(self.tasks[task]['means'].values, dtype=torch.float32, device=predicted_params.device)
-        stds = torch.tensor(self.tasks[task]['stds'].values, dtype=torch.float32, device=predicted_params.device)
+        means, stds = dataset.get_normalization_constants(task)
         # The normalization constants are of shape (T,) but the predicted means and stds
         # are of shape (N, T), so we need to add a new dimension to the constants.
         means = means.unsqueeze(0)

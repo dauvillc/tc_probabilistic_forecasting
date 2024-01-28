@@ -194,12 +194,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Normalize the output datacubes.
         for name in self.output_datacubes:
             self.datacubes[name] = (self.datacubes[name] - self.output_datacube_means[name]) / self.output_datacube_stds[name]
-        # Save the statistics in the tasks dictionary.
-        if save_statistics:
-            for task in self.output_tabular_tasks:
-                output_variables = self.get_task_output_variables(task)
-                self.output_tabular_tasks[task]['means'] = self.output_variable_means[output_variables]
-                self.output_tabular_tasks[task]['stds'] = self.output_variable_stds[output_variables]
     
     def denormalize_tabular_target(self, variables):
         """
@@ -209,8 +203,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         ----------
         variables: Mapping of str to torch.Tensor
             The variables to denormalize. The keys are tasks names and the values are
-            torch.Tensors of shape (batch_size, T * K) where K is the number of variables
-            in the task.
+            torch.Tensors.
         
         Returns
         -------
@@ -220,8 +213,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         denormalized_variables = {}
         for task in variables:
             # Retrieve the normalization constants for the task and convert them to tensors.
-            means = torch.tensor(self.output_tabular_tasks[task]['means'].values, dtype=torch.float32)
-            stds = torch.tensor(self.output_tabular_tasks[task]['stds'].values, dtype=torch.float32)
+            means, stds = self.get_normalization_constants(task)
             # Load them to the same device as the variables.
             means = means.to(variables[task].device)
             stds = stds.to(variables[task].device)
@@ -229,18 +221,25 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             denormalized_variables[task] = variables[task] * stds + means
         return denormalized_variables
 
-    def get_normalization_constants(self):
+    def get_normalization_constants(self, task):
         """
-        Returns the normalization constants as a triple
-        (input_variable_means, input_variable_stds, task_statistics).
+        Returns the normalization constants for a given task.
+
+        Parameters
+        ----------
+        task: str
+            The name of the task.
+        
+        Returns
+        -------
+        input_means: torch.Tensor 
+        input_stds: torch.Tensor
         """
+        # Retrieve the output variables of the task
+        variables = self.get_task_output_variables(task)
         # Retrieve the normalization constants for the output variables.
-        task_statistics = {}
-        for task in self.output_tabular_tasks:
-            output_variables = self.get_task_output_variables(task)
-            task_statistics[task] = {'means': self.output_variable_means[output_variables],
-                                     'stds': self.output_variable_stds[output_variables]}
-        return self.input_variable_means, self.input_variable_stds, task_statistics
+        mean, std =  self.output_variable_means[variables], self.output_variable_stds[variables]
+        return torch.tensor(mean.values, dtype=torch.float32), torch.tensor(std.values, dtype=torch.float32)
 
     def __len__(self):
         return len(self.trajectory_indices)
@@ -250,7 +249,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         Returns the idx-th sample of the dataset, as a tuple
         (input_time_series, input_datacubes, output_time_series, output_datacubes).
         
-        input_time_series is a Tensor of shape (batch_size, P * K), where K is the number of variables.
+        input_time_series is a Mapping of str to torch.Tensor, where the keys are the input
+        variable names and the values are torch.Tensors of shape (batch_size, P, K) where K
+        is the number of variables in the input time series.
         output_time_series is a Mapping of str to torch.Tensor, where the keys are the task names
         and the values are torch.Tensors of shape (batch_size, T, K') where K' is the number of variables
         in the task.
@@ -260,7 +261,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         applies to output_datacubes, but the shape of the torch.Tensors is (batch_size, C, T, H, W).
         """
         # Retrieve the input time series.
-        input_time_series = torch.tensor(self.input_trajectories.iloc[idx].values, dtype=torch.float32)
+        input_time_series = {}
+        for var in self.input_columns:
+            cols = [f"{var}_{i}" for i in range(-self.past_steps + 1, 1)]
+            input_time_series[var] = torch.tensor(self.input_trajectories[cols].iloc[idx].values,
+                                                        dtype=torch.float32)
 
         # Retrieve the output time series.
         output_time_series = {}
