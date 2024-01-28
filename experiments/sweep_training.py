@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import yaml
 import wandb
 import collections
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
@@ -33,13 +33,13 @@ def create_output_distrib(distrib_name, tasks):
     distribution : the distribution object.
     """
     if distrib_name in ['quantile_composite', 'qc']:
-        distribution = QuantileCompositeDistribution(0, 90, tasks)
+        distribution = QuantileCompositeDistribution(0, 90)
     elif distrib_name == 'normal':
-        distribution = NormalDistribution(tasks)
+        distribution = NormalDistribution()
     elif distrib_name == 'deterministic':
         # Using a dummy distribution that is deterministic allows to use the same
         # code for deterministic and probabilistic models
-        distribution = DeterministicDistribution(tasks)
+        distribution = DeterministicDistribution()
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution
@@ -98,10 +98,6 @@ def main():
         training_cfg = cfg["training_settings"]
     past_steps = experiment_cfg["past_steps"]
 
-    # Load the project configuration file
-    with open("config.yml", "r") as f:
-        config = yaml.safe_load(f)
-
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
     
@@ -138,9 +134,7 @@ def main():
     # Train the models. Save the train and validation losses
     trainer = pl.Trainer(accelerator='gpu', precision=training_cfg['precision'],
                          max_epochs=training_cfg['epochs'], logger=wandb_logger,
-                         callbacks=[ModelCheckpoint(monitor='val_loss', mode='min',
-                                                    dirpath=config['paths']['checkpoints']),
-                                    LearningRateMonitor()])
+                         callbacks=[LearningRateMonitor()])
     trainer.fit(model, train_loader, val_loader)
 
 
