@@ -1,29 +1,32 @@
 experiment:
-  name: vmax_r34_mslp_loc_smallencoder
+  name: vmax_mse_smallenc
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
   future_steps: 4
   # Size of the input and output patches, in pixels (resolution=0.07°)
   patch_size: 128
+  # Id of a W&B run from which to download the model to fine-tune it
+  # If left to None, a new model we trained from scratch
+  use-pre-trained-id:
 tasks:
   # Parameters specific to each task
-  # Output distribution:
+  # distribution:
   # - "deterministic" (MSE loss)
   # - "normal"
   # - "qc" (quantiles composite)
   vmax:
     output_variables: ['INTENSITY']
     distribution: deterministic
-  mslp:
-    output_variables: ['MSLP']
-    distribution: deterministic
-  r34_avg:
-    output_variables: ['R35_4qAVG']
-    distribution: deterministic
-  location:
-    output_variables: ['LAT', 'LON']
-    distribution: deterministic
+  # mslp:
+  # output_variables: ['MSLP']
+  # distribution: deterministic
+  # r34_avg:
+  # output_variables: ['R35_4qAVG']
+  # distribution: deterministic
+  # location:
+  # output_variables: ['LAT', 'LON']
+  # distribution: deterministic
 training_settings:
   epochs: 100
   batch_size: 128
@@ -35,7 +38,11 @@ training_settings:
   data_augmentation: true
   # Learning-related params
   initial_lr: 0.001
-  final_lr: 0.0000001
+  final_lr: 1.0e-7
+  # If fine-tuning, freeze the encoder
+  freeze_encoder:
+  # Optionally, specify a single task to train on
+  trained_task: 
 model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
   base_block: conv
