@@ -114,3 +114,39 @@ class PredictionHead(nn.Module):
         prediction = self.fc(latent_space)
         # Reshape the prediction
         return prediction.reshape(-1, self.future_steps, self.n_output_vars)
+
+
+class MultivariatePredictionHead(nn.Module):
+    """
+    Similar to PredictionHead, but predicts the parameters of a multivariate
+    distribution over all time steps at once, instead of predicting the parameters
+    of the marginal distribution at each time step.
+
+    Parameters
+    ----------
+    input_size: int
+        The size of the input latent space.
+    n_parameters:
+        The number of parameters of the multivariate distribution.
+    """
+    def __init__(self, input_size, n_parameters):
+        super().__init__()
+        self.n_parameters = n_parameters
+        self.output_size = n_parameters
+        # Fully connected layer
+        self.fc = nn.Linear(input_size, self.n_parameters)
+
+    def forward(self, latent_space):
+        """
+        Parameters
+        ----------
+        latent_space: torch tensor of dimensions (N, input_size)
+            The latent space produced by the common linear module.
+        Returns
+        -------
+        torch tensor of dimensions (N, n_parameters)
+            The prediction.
+        """
+        # Apply the fully connected layer
+        prediction = self.fc(latent_space)
+        return prediction

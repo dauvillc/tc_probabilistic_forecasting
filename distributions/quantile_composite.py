@@ -22,6 +22,7 @@ class QuantileCompositeDistribution:
         self.n_parameters = len(self.quantiles)
         self.min_value = min_value
         self.max_value = max_value
+        self.is_multivariate = False
         
         # Define the loss function
         self.loss_function = MultipleQuantileLoss(self.quantiles)

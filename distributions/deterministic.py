@@ -38,6 +38,7 @@ class DeterministicDistribution:
         # The distribution P(y|x) is deterministic, so it is characterized by a single
         # parameter, which is the predicted value.
         self.n_parameters = 1
+        self.is_multivariate = False
 
         # The output of the model will have shape (N, T, V) where N is the batch size,
         # T is the number of time steps and V is the number of output variables.

@@ -14,9 +14,10 @@ from data_processing.assemble_experiment_dataset import load_dataset
 from distributions.quantile_composite import QuantileCompositeDistribution
 from distributions.normal import NormalDistribution
 from distributions.deterministic import DeterministicDistribution
+from distributions.multivariate_normal import MultivariateNormal
 
 
-def create_output_distrib(distrib_name, tasks):
+def create_output_distrib(distrib_name, tasks, cfg):
     """
     Creates the output distribution object, which implements the loss function,
     metrics, CDF and inverse CDF.
@@ -27,6 +28,8 @@ def create_output_distrib(distrib_name, tasks):
         The name of the distribution to use.
     tasks: dict
         Pointer to the tasks dictionary, which contains the normalization constants.
+    cfg: dict
+        The configuration dictionary.
 
     Returns
     -------
@@ -40,15 +43,18 @@ def create_output_distrib(distrib_name, tasks):
         # Using a dummy distribution that is deterministic allows to use the same
         # code for deterministic and probabilistic models
         distribution = DeterministicDistribution()
+    elif distrib_name == "multivariate_normal":
+        distribution = MultivariateNormal(cfg['experiment']['future_steps'])
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution
 
 
-def create_tasks(tasks_cfg):
+def create_tasks(cfg):
     """
     Creates the dictionary of tasks from the configuration file.
     """
+    tasks_cfg = cfg['tasks']
     tasks = {}
     if tasks_cfg is None:
         return tasks
@@ -57,7 +63,7 @@ def create_tasks(tasks_cfg):
                        'distribution': params['distribution']}
         # Create the distribution object, which implements the loss function,
         # the metrics, optionally the activation function
-        distrib = create_output_distrib(params['distribution'], tasks)
+        distrib = create_output_distrib(params['distribution'], tasks, cfg)
         tasks[task]['distrib_obj'] = distrib
         # Retrieve the output size, either:
         #  - the number of output variables if more than one (and then the distribution must be deterministic)
@@ -81,7 +87,6 @@ if __name__ == "__main__":
     with open("training_cfg.yml", "r") as f:
         cfg = yaml.safe_load(f)
         experiment_cfg = cfg["experiment"]
-        tasks_cfg = cfg["tasks"]
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
     past_steps, future_steps = experiment_cfg["past_steps"], experiment_cfg["future_steps"]
@@ -94,7 +99,7 @@ if __name__ == "__main__":
         raise ValueError("The number of past steps must be >= 3.")
 
     # ====== TASKS DEFINITION ====== #
-    tasks = create_tasks(tasks_cfg)
+    tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
     train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])

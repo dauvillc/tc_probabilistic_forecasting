@@ -51,6 +51,7 @@ class NormalDistribution:
     """
     def __init__(self):
         self.n_parameters = 2
+        self.is_multivariate = False
 
         # Metrics
         # The MAE is the mean absolute error between the predicted mean (which is also the

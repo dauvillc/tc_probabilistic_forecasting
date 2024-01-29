@@ -6,7 +6,7 @@ from torch import nn
 import pytorch_lightning as pl
 from models.encoder import Encoder3d
 from models.decoder import Decoder3d
-from models.linear import CommonLinearModule, PredictionHead
+from models.linear import CommonLinearModule, PredictionHead, MultivariatePredictionHead
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -77,9 +77,14 @@ class StormPredictionModel(pl.LightningModule):
         self.prediction_heads = nn.ModuleDict({})
         self.loss_functions = {}
         for task, task_params in tabular_tasks.items():
-            # Create the prediction head
-            self.prediction_heads[task] = PredictionHead(self.common_linear_model.output_size,
-                                                         task_params['output_size'], future_steps)
+            # Create the prediction head. If the task is to predict a distribution at each
+            # time step, use PredictionHead. Otherwise, use MultivariatePredictionHead.
+            if task_params['distrib_obj'].is_multivariate:
+                self.prediction_heads[task] = MultivariatePredictionHead(self.common_linear_model.output_size,
+                                                                         task_params['output_size'])
+            else:   
+                self.prediction_heads[task] = PredictionHead(self.common_linear_model.output_size,
+                                                             task_params['output_size'], future_steps)
 
         # Create the decoder if needed
         if len(datacube_tasks) > 0:
