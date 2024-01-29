@@ -144,8 +144,8 @@ class NormalDistribution:
         means, stds = dataset.get_normalization_constants(task)
         # The normalization constants are of shape (T,) but the predicted means and stds
         # are of shape (N, T), so we need to add a new dimension to the constants.
-        means = means.unsqueeze(0)
-        stds = stds.unsqueeze(0)
+        means = means.unsqueeze(0).to(predicted_params.device)
+        stds = stds.unsqueeze(0).to(predicted_params.device)
         # De-normalize the predictions by rescaling the predicted mean and std
         # Mean of the distribution:
         predicted_params[:, :, 0] = predicted_params[:, :, 0] * stds + means

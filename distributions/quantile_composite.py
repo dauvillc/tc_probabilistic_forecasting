@@ -2,7 +2,6 @@
 Defines the QuantileCompositeDistribution class.
 """
 import numpy as np
-import torch
 from metrics.loss_functions import MultipleQuantileLoss
 from metrics.quantiles import Quantiles_eCDF, Quantiles_inverse_eCDF, QuantilesCRPS
 
