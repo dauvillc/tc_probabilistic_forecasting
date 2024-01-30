@@ -24,6 +24,7 @@ def make_predictions(run_ids, current_run):
 
     Returns
     -------
+    configs: Mapping run_name -> config
     predictions : Mapping run_name -> predictions on the validation set.
         The keys are the names of the runs, and the values are mappings
         task -> predictions. The predictions are returned as the list of all batches
@@ -52,10 +53,12 @@ def make_predictions(run_ids, current_run):
     # compute the predictions, and store them on cpu.
     predictions = {}  # Mapping run_name -> predictions
     targets = {}  # Mapping task -> targets
+    run_configs = {}  # Mapping run_name -> config
     for run, run_id in zip(runs, run_ids):
         # Retrieve the config from the run
         cfg = run.config
         run_name = cfg['experiment']['name']
+        run_configs[run_name] = cfg
         # ===== TASKS DEFINITION ==== #
         # Create the tasks
         tasks = create_tasks(cfg)
@@ -108,5 +111,5 @@ def make_predictions(run_ids, current_run):
     # Remark: the normalization constants were computed on the training set.
     targets = val_dataset.denormalize_tabular_target(targets)
         
-    return predictions, targets
+    return run_configs, predictions, targets
 

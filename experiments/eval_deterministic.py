@@ -23,7 +23,7 @@ if __name__ == "__main__":
                              job_type="eval")
 
     # Make predictions using the models from the runs
-    predictions, targets = make_predictions(args.ids, current_run)
+    _, predictions, targets = make_predictions(args.ids, current_run)
 
     # ================= EVALUATION ================= #
     # Not all runs necessarily have the same tasks, so we first need to retrieve
