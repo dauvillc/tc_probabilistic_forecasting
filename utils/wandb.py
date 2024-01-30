@@ -98,14 +98,15 @@ def make_predictions(run_ids, current_run):
             model_predictions[task_name] = distrib.activation(model_predictions[task_name])
         # Store the predictions of that model
         predictions[run_name] = model_predictions
-        # We also need to save the targets for each task
-        # If the targets for a task are already stored, we don't need to do anything
-        for task in predictions[run_name].keys():
-            if task not in targets.keys():
-                targets[task] = torch.cat([targets_batch[task].cpu() for _, _, targets_batch, _ in val_loader])
-        # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
-        # Remark: the normalization constants were computed on the training set.
-        targets = val_dataset.denormalize_tabular_target(targets)
+
+    # We also need to save the targets for each task
+    # If the targets for a task are already stored, we don't need to do anything
+    for task in predictions[run_name].keys():
+        if task not in targets.keys():
+            targets[task] = torch.cat([targets_batch[task].cpu() for _, _, targets_batch, _ in val_loader])
+    # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
+    # Remark: the normalization constants were computed on the training set.
+    targets = val_dataset.denormalize_tabular_target(targets)
         
-        return predictions, targets
+    return predictions, targets
 
