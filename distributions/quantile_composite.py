@@ -42,6 +42,10 @@ class QuantileCompositeDistribution:
         self.cdf = Quantiles_eCDF(self.quantiles, min_value, max_value)
         self.inverse_cdf = Quantiles_inverse_eCDF(self.quantiles, min_value, max_value) 
 
+    def activation(self, predicted_params):
+        # Identity activation
+        return predicted_params
+
     def denormalize(self, predicted_params, task, dataset):
         """
         Denormalizes the predicted values.

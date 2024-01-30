@@ -70,6 +70,10 @@ class DeterministicDistribution:
         defined as y for any u in [0, 1].
         """
         return y
+
+    def activation(self, predicted_params):
+        # Identity activation function
+        return predicted_params
     
     def denormalize(self, predicted_params, task, dataset):
         """

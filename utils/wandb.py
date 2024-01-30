@@ -1,39 +1,44 @@
 """
-Evaluates a model taken from a W&B run. All plots are uploaded to W&B and
-saved locally.
+Implements some functions to retrieve data from wandb.
 """
-import sys
-sys.path.append("./")
-import argparse
-import torch
 import wandb
 import pytorch_lightning as pl
+import torch
 from pathlib import Path
+from experiments.training import create_tasks
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
-from experiments.training import create_tasks
-from plotting.deterministic import plot_deterministic_metrics
 
 
-if __name__ == "__main__":
-    pl.seed_everything(42)
-    # Some parameters
+def make_predictions(run_ids, current_run):
+    """
+    For a set of W&B run ids, retrieve the corresponding models and make
+    predictions on the validation set.
+    
+    Parameters
+    ----------
+    run_ids : list of str
+        The ids of the runs to retrieve.
+    current_run : wandb.Run
+        The current run, used to retrieve the artifacts.
+
+    Returns
+    -------
+    predictions : Mapping run_name -> predictions on the validation set.
+        The keys are the names of the runs, and the values are mappings
+        task -> predictions. The predictions are returned as the list of all batches
+        of predictions on the validation set (not concatenated nor denormalized,
+        stored on cpu).
+    targets : Mapping task -> targets on the validation set.
+    """
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
-    # Argument parser
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--ids", required=True, nargs='+',
-                        help="The ids of the experiment to evaluate.")
-    args = parser.parse_args()
+    pl.seed_everything(42)
 
     # ====== WANDB INITIALIZATION ====== #
-    # Initialize W&B 
-    current_run = wandb.init(project="tc_prediction",
-                             name="eval-" + "-".join(args.ids),
-                             job_type="eval")
     api = wandb.Api()
     # Retrieve each run from the ids, and store their names
     runs, names = [], []
-    for run_id in args.ids:
+    for run_id in run_ids:
         try:
             runs.append(api.run(f"arches/tc_prediction/{run_id}"))
             names.append(runs[-1].config['experiment']['name'])
@@ -47,15 +52,13 @@ if __name__ == "__main__":
     # compute the predictions, and store them on cpu.
     predictions = {}  # Mapping run_name -> predictions
     targets = {}  # Mapping task -> targets
-    for run, run_id in zip(runs, args.ids):
+    for run, run_id in zip(runs, run_ids):
         # Retrieve the config from the run
         cfg = run.config
         run_name = cfg['experiment']['name']
         # ===== TASKS DEFINITION ==== #
-        # Retrieve the tasks configuration from the config
-        tasks_cfg = cfg['tasks']
         # Create the tasks
-        tasks = create_tasks(tasks_cfg)
+        tasks = create_tasks(cfg)
 
         # ===== DATA LOADING ===== #
         # The dataset contains the same samples for every experiment, but not necessarily
@@ -84,12 +87,16 @@ if __name__ == "__main__":
         # ===== MAKING PREDICTIONS ===== #
         # Compute the predictions on the validation set
         model_predictions = trainer.predict(model, val_loader)
-        # Right now the predictions are stored as batches of Mappping[str -> torch.Tensor],
-        # but we want to store them as a single Mapping[str -> torch.Tensor], so we need
-        # to concatenate the batches.
-        # We also need to move the predictions to cpu as not to overload the gpu.
+        # Right now, the predictions are stored as a list of batches. Each batch
+        # is a dictionary mapping task -> predictions. We want to obtain a
+        # dictionary mapping task -> predictions where predictions is a single tensor.
         model_predictions = {task: torch.cat([batch[task].cpu() for batch in model_predictions])
-                             for task in tasks}
+                             for task in tasks.keys()}
+        # Apply the activation function (specific to each distribution)
+        for task_name, task_params in tasks.items():
+            distrib = task_params['distrib_obj']
+            model_predictions[task_name] = distrib.activation(model_predictions[task_name])
+        # Store the predictions of that model
         predictions[run_name] = model_predictions
         # We also need to save the targets for each task
         # If the targets for a task are already stored, we don't need to do anything
@@ -99,18 +106,6 @@ if __name__ == "__main__":
         # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
         # Remark: the normalization constants were computed on the training set.
         targets = val_dataset.denormalize_tabular_target(targets)
+        
+        return predictions, targets
 
-    # ================= EVALUATION ================= #
-    # Not all runs necessarily have the same tasks, so we first need to retrieve
-    # the list of all tasks present in the runs.
-    tasks = set()
-    for run in runs:
-        tasks.update(predictions[run.config['experiment']['name']].keys())
-    tasks = list(tasks)
-    
-    # Plot the RMSE and MAE for each task
-    # For the intensity
-    fig = plot_deterministic_metrics({name: pred['vmax'] for name, pred in predictions.items()},
-                                     targets['vmax'], "Forecast error for the 1-min maximum wind speed",
-                                     "m/s", save_path=f"figures/evaluation/{current_run.name}/vmax.png")
-    current_run.log({"vmax": wandb.Image(fig)})

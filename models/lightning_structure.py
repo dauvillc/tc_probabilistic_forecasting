@@ -162,7 +162,7 @@ class StormPredictionModel(pl.LightningModule):
         predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions using the task-specific denormalization function
         for task, task_params in self.tabular_tasks.items():
-            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task)
+            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task, self.train_dataset)
         return predictions
  
     def forward(self, past_variables, past_datacubes):
