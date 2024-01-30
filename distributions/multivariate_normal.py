@@ -27,6 +27,7 @@ class MultivariateNormal:
         # Metrics
         self.metrics = {
                 'nll': self.loss_function,
+                'distance_to_mean_rmse': self.distance_to_mean_rmse,
         }
 
     def loss_function(self, predicted_params, y):
@@ -134,3 +135,25 @@ class MultivariateNormal:
         new_mean = stds * pred_mean + means
         new_L = stds.unsqueeze(-1) * pred_L
         return new_mean, new_L
+
+    def distance_to_mean_rmse(predicted_params, y):
+        """
+        Computes the RMSE between the mean of the distribution and the observed values.
+
+        Parameters
+        ----------
+        predicted_params: Pair (mean, L) where:
+            - mean: torch.Tensor of shape (N, dim)
+                Mean vector of the distribution.
+            - L: torch.Tensor of shape (N, dim, dim)
+                Cholesky factor of the covariance matrix.
+        y: torch.Tensor of shape (N, dim)
+            Observed values.
+
+        Returns
+        -------
+        rmse: torch.Tensor of shape (N,)
+            RMSE between the mean of the distribution and the observed values.
+        """
+        mean, _ = predicted_params
+        return torch.sqrt(torch.mean((mean - y)**2, dim=-1))
