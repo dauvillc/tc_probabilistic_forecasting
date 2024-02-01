@@ -3,6 +3,7 @@
 P(Y_{1:T} | X_{-P+1:0}).
 """
 import torch
+from distributions.normal import normal_crps
 
 
 class MultivariateNormal:
@@ -28,6 +29,7 @@ class MultivariateNormal:
         self.metrics = {
                 'nll': self.loss_function,
                 'distance_to_mean_rmse': self.distance_to_mean_rmse,
+                'CRPS': self.marginal_crps
         }
 
     def loss_function(self, predicted_params, y):
@@ -47,7 +49,7 @@ class MultivariateNormal:
 
         Returns
         -------
-        loss: torch.Tensor of shape (N,)
+        loss: float 
             Negative log likelihood of the multivariate normal distribution.
         """
         mean, L = predicted_params
@@ -136,7 +138,7 @@ class MultivariateNormal:
         new_L = stds.unsqueeze(-1) * pred_L
         return new_mean, new_L
 
-    def distance_to_mean_rmse(predicted_params, y):
+    def distance_to_mean_rmse(self, predicted_params, y):
         """
         Computes the RMSE between the mean of the distribution and the observed values.
 
@@ -152,8 +154,34 @@ class MultivariateNormal:
 
         Returns
         -------
-        rmse: torch.Tensor of shape (N,)
-            RMSE between the mean of the distribution and the observed values.
+        rmse: float 
+            Average RMSE between the mean of the distribution and the observed values.
         """
         mean, _ = predicted_params
-        return torch.sqrt(torch.mean((mean - y)**2, dim=-1))
+        return torch.sqrt(torch.mean((mean - y)**2))
+
+    def marginal_crps(self, predicted_params, y):
+        """
+        Computes the average CRPS over each marginal distribution.
+
+        Parameters
+        ----------
+        predicted_params: Pair (mean, L) where:
+            - mean: torch.Tensor of shape (N, dim)
+                Mean vector of the distribution.
+            - L: torch.Tensor of shape (N, dim, dim)
+                Cholesky factor of the covariance matrix.
+        y: torch.Tensor of shape (N, dim)
+            Observed values.
+
+        Returns
+        -------
+        crps: float
+            Average CRPS over each marginal distribution.
+        """
+        mean, L = predicted_params
+        # Retrieve the standard deviation of each marginal distribution
+        std = torch.diagonal(L, dim1=-2, dim2=-1)
+        # Compute the CRPS for each marginal distribution
+        crps = normal_crps(mean, std, y)
+        return crps.mean()

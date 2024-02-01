@@ -57,8 +57,7 @@ def make_predictions(run_ids, current_run):
     for run, run_id in zip(runs, run_ids):
         # Retrieve the config from the run
         cfg = run.config
-        run_name = cfg['experiment']['name']
-        run_configs[run_name] = cfg
+        run_configs[run_id] = cfg
         # ===== TASKS DEFINITION ==== #
         # Create the tasks
         tasks = create_tasks(cfg)
@@ -91,20 +90,24 @@ def make_predictions(run_ids, current_run):
         # Compute the predictions on the validation set
         model_predictions = trainer.predict(model, val_loader)
         # Right now, the predictions are stored as a list of batches. Each batch
-        # is a dictionary mapping task -> predictions. We want to obtain a
-        # dictionary mapping task -> predictions where predictions is a single tensor.
-        model_predictions = {task: torch.cat([batch[task].cpu() for batch in model_predictions])
-                             for task in tasks.keys()}
-        # Apply the activation function (specific to each distribution)
-        for task_name, task_params in tasks.items():
-            distrib = task_params['distrib_obj']
-            model_predictions[task_name] = distrib.activation(model_predictions[task_name])
+        # is a dictionary mapping task -> predictions.
+        concatenated_predictions = {}
+        for task in model_predictions[0].keys():
+            # The predictions can be either a single tensor, or a tuple of tensors
+            # (for the multivariate normal distribution)
+            if isinstance(model_predictions[0][task], tuple):
+                n_tensors = len(model_predictions[0][task])
+                concatenated_predictions[task] = tuple(torch.cat([batch[task][i] for batch in model_predictions])      
+                                                         for i in range(n_tensors))
+            else:
+                concatenated_predictions[task] = torch.cat([batch[task] for batch in model_predictions])
+
         # Store the predictions of that model
-        predictions[run_name] = model_predictions
+        predictions[run_id] = concatenated_predictions
 
     # We also need to save the targets for each task
     # If the targets for a task are already stored, we don't need to do anything
-    for task in predictions[run_name].keys():
+    for task in predictions[run_id].keys():
         if task not in targets.keys():
             targets[task] = torch.cat([targets_batch[task].cpu() for _, _, targets_batch, _ in val_loader])
     # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
