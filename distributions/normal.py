@@ -31,7 +31,7 @@ def normal_crps(mu, sigma, y):
     return crps
 
 
-def normal_mae(predicted_params, y):
+def normal_mae(predicted_params, y, reduce_mean=True):
     """
     Returns the MAE between the predicted mean (which is also the median) and the true value.
     """
@@ -39,7 +39,11 @@ def normal_mae(predicted_params, y):
     predicted_params = predicted_params.view(-1, 2)
     y = y.view(-1)
     mu = predicted_params[:, 0]
-    return torch.abs(mu - y).mean()
+    mae = torch.abs(mu - y)
+    if reduce_mean:
+        return mae.mean()
+    else:
+        return mae
 
 
 class NormalDistribution:
@@ -94,7 +98,7 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
         return torch.stack([mu, torch.nn.functional.softplus(sigma)], dim=-1)
 
-    def loss_function(self, predicted_params, y):
+    def loss_function(self, predicted_params, y, reduce_mean=True):
         """
         Computes the CRPS for a normal distribution, whose parameters are predicted
         by the model.
@@ -107,11 +111,13 @@ class NormalDistribution:
             The predicted parameters of the normal distribution for each sample and time step.
         y: torch.Tensor of shape (N, T)
             The true values for each sample and time step.
+        reduce_mean : bool
+            Whether to reduce the mean of the loss over the batch.
 
         Returns
         -------
-        float
-            The mean CRPS over the batch.
+        If reduce_mean is True, returns a torch.Tensor of shape (1,)
+        Otherwise, returns a torch.Tensor of shape (N,)
         """
         # We first need to flatten the tensors to get rid of the time dimension
         predicted_params = predicted_params.view(-1, self.n_parameters)
@@ -121,7 +127,10 @@ class NormalDistribution:
         valid_sigma = torch.clamp(sigma, min=1e-2)
         # Compute the CRPS
         loss = normal_crps(mu, valid_sigma, y)
-        return loss.mean()
+        if reduce_mean:
+            return loss.mean()
+        else:
+            return loss
 
     def denormalize(self, predicted_params, task, dataset):
         """
