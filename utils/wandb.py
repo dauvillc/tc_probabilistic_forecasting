@@ -54,6 +54,7 @@ def make_predictions(run_ids, current_run):
     predictions = {}  # Mapping run_name -> predictions
     targets = {}  # Mapping task -> targets
     run_configs = {}  # Mapping run_name -> config
+    run_tasks = {}  # Mapping run_name -> tasks
     for run, run_id in zip(runs, run_ids):
         # Retrieve the config from the run
         cfg = run.config
@@ -61,6 +62,7 @@ def make_predictions(run_ids, current_run):
         # ===== TASKS DEFINITION ==== #
         # Create the tasks
         tasks = create_tasks(cfg)
+        run_tasks[run_id] = tasks
 
         # ===== DATA LOADING ===== #
         # The dataset contains the same samples for every experiment, but not necessarily
@@ -113,6 +115,6 @@ def make_predictions(run_ids, current_run):
     # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
     # Remark: the normalization constants were computed on the training set.
     targets = val_dataset.denormalize_tabular_target(targets)
-        
-    return run_configs, predictions, targets
+ 
+    return run_configs, run_tasks, predictions, targets
 

@@ -24,17 +24,12 @@ if __name__ == "__main__":
                              job_type="eval")
 
     # Make predictions using the models from the runs
-    configs, predictions, targets = make_predictions(args.ids, current_run)
+    configs, tasks, predictions, targets = make_predictions(args.ids, current_run)
     # Retrieve the run name for each run id
     run_names = [configs[run_id]['experiment']['name'] for run_id in args.ids]
 
     # ================= EVALUATION ================= #
-    # Not all runs necessarily have the same tasks, so we first need to retrieve
-    # the list of all tasks present in the runs.
-    tasks = set()
-    for run_id in predictions.keys():
-        tasks.update(predictions[run_id].keys())
-    tasks = list(tasks)
+    tasks = list(tasks.keys())
 
     # Define a grid of values for the intensity
     vmax_points = torch.linspace(0, 200, 50) # In knots
