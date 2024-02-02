@@ -11,13 +11,18 @@ sys.path.append("./")
 import os
 import argparse
 import wandb
+import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from collections import defaultdict
 from utils.wandb import make_predictions
-from utils.utils import matplotlib_markers
+from utils.utils import matplotlib_markers, sshs_category
 
 
 if __name__ == "__main__":
+    # Set sns style
+    sns.set_style("whitegrid")
+
     # Argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--ids", required=True, nargs='+',
@@ -79,7 +84,7 @@ if __name__ == "__main__":
     # Now for each pair (task, metric), we'll plot the metric for each run that implements it.
     for (task_name, metric_name), run_ids in metrics_map.items():
         # Create a figure with a single plot
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        fig, ax = plt.subplots(1, 1)
         results = {}
         for k, run_id in enumerate(run_ids):
             # Retrieve the predictions and targets for the run
@@ -98,9 +103,63 @@ if __name__ == "__main__":
                    meanprops={'color': 'red'})
         ax.set_title(f"{task_name} - {metric_name}")
         ax.set_ylabel(metric_name)
+        # Add a legend to indicate that the mean is in red and the median in orange
+        ax.legend(handles=[plt.Line2D([0], [0], color='red', lw=1, ls='--', label='Mean'),
+                            plt.Line2D([0], [0], color='orange', lw=1, label='Median')])
         # Save the figure
         fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}.png"))
         # Log the figure to W&B
         current_run.log({f"{task_name}-{metric_name}": wandb.Image(fig)})
         plt.close(fig)
+
+    # ======== CATEGORY METRICS ======== #
+    # In this section, we'll plot the metrics for every model, for each category of the SSHS.
+    # Since we are forecasting multiple time steps ahead, we'll use the maximum SSHS category
+    # reached over all time steps.
+    # Once again, we'll do it every (task, metric) pair.
+    for (task_name, metric_name), run_ids in metrics_map.items():
+        # Create a figure with a single plot. The X axis will be the SSHS category,
+        # and the Y axis the metric value.
+        # Each model will be represented by its own line, with confidence intervals.
+        fig, ax = plt.subplots(1, 1)
+        for k, run_id in enumerate(run_ids):
+            # Retrieve the predictions and targets for the run
+            predictions = all_runs_predictions[run_id][task_name]
+            task_targets = targets[task_name]
+            # Retrieve the metric function
+            metric_fn = all_runs_tasks[run_id][task_name]['distrib_obj'].metrics[metric_name]
+            # Bucketize the targets according to the SSHS category
+            target_sshs = sshs_category(task_targets)
+            # Compute the maximum SSHS category over all time steps
+            target_sshs, _ = target_sshs.max(dim=1)
+            # Compute the metric for each category
+            metric_means, metric_stds = [], []
+            for category in range(-1, 6):
+                mask = target_sshs == category
+                cat_targets = task_targets[mask]
+                # The predictions can be either a tensor or a tuple of tensors
+                if isinstance(predictions, tuple):
+                    cat_preds = tuple(pred[mask] for pred in predictions)
+                else:
+                    cat_preds = predictions[mask]
+                # Compute the metric for the category
+                metric_value = metric_fn(cat_preds, cat_targets, reduce_mean=False)
+                # Compute the mean and standard deviation of the metric for the category
+                metric_means.append(metric_value.mean())
+                metric_stds.append(metric_value.std())
+            metric_means, metric_stds = np.array(metric_means), np.array(metric_stds)
+            # Plot the results
+            ax.plot(range(-1, 6), metric_means, color=colors[run_id], marker=markers[run_id], label=run_names[run_id])
+            ax.fill_between(range(-1, 6), metric_means - metric_stds, metric_means + metric_stds,
+                            alpha=0.2, color=colors[run_id], label=run_names[run_id])
+        ax.set_title(f"{task_name} - {metric_name}")
+        ax.set_xlabel("Maximum SSHS category over $t+6h,t+12h,t+18h,t+24h$")
+        ax.set_ylabel(metric_name)
+        ax.legend()
+        # Save the figure
+        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}-sshs.png"))
+        # Log the figure to W&B
+        current_run.log({f"{task_name}-{metric_name}-sshs": wandb.Image(fig)})
+        plt.close(fig)
+
 

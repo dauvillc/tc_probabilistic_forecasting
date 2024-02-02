@@ -78,3 +78,26 @@ def matplotlib_markers(num):
     """
     markers = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd']
     return [markers[i % len(markers)] for i in range(num)]
+
+
+def sshs_category(wind_speed):
+    """
+    Returns the Saffir-Simpson Hurricane Wind Scale category for a given wind speed.
+    The categories go from -1 (Tropical Depression) to 5.
+
+    Parameters
+    ----------
+    wind_speed : torch.Tensor of shape (N,)
+        Batch of wind speeds, in knots.
+
+    Returns
+    -------
+    torch.Tensor of shape (N,)
+        The category of the wind speed.
+    """
+    # Define the thresholds for each category
+    thresholds = torch.tensor([0, 34, 64, 83, 96, 113, 137, 220])
+    # Compute the category (which goes from -1 to 5)
+    return torch.bucketize(wind_speed, thresholds, right=True) - 2
+
+    
