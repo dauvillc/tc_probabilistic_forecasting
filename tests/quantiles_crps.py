@@ -3,25 +3,44 @@ Tests the implementation of the quantile CRPS.
 """
 import sys
 sys.path.append("./")
-import numpy as np
-from metrics.metrics import QuantilesCRPS
+import torch
+from loss_functions.quantiles import QuantilesCRPS
 
 
 if __name__ == "__main__":
-    # Create some dummy data
-    # Quantiles to predict, of shape (n_quantiles,)
-    quantiles = np.array([0.25, 0.5, 0.75])
-    # True observations, of shape (n_samples, time steps)
-    # One of the observations is before the first quantile, one is in the
-    # middle, and one is after the last quantile
-    y_1 = np.array([[1]])
-    y_2 = np.array([[5]])
-    y_3 = np.array([[7]])
-    # Predictions, of shape (n_samples, time steps, n_quantiles)
-    y_pred = np.array([[[2, 4, 6]]])
+    # Test 1 - Two quantiles are predicted only
+    y = torch.tensor([2])
+    pred = torch.tensor([[[1, 3]]])
+    probas = torch.tensor([0.25, 0.75])
+    crps = QuantilesCRPS(probas)
+    assert abs(crps(pred, y) - torch.tensor(0.5417)).item() < 1e-3
 
-    # Compute the CRPS
-    crps = QuantilesCRPS(quantiles, 0, 8)
-    print("CRPS for y_1:", crps(y_pred, y_1))
-    print("CRPS for y_2:", crps(y_pred, y_2))
-    print("CRPS for y_3:", crps(y_pred, y_3))
+    # Test 2 - Two quantiles, observation is lower than the lowest quantile
+    y = torch.tensor([0])
+    pred = torch.tensor([[[1, 3]]])
+    probas = torch.tensor([0.25, 0.75])
+    crps = QuantilesCRPS(probas)
+    assert abs(crps(pred, y) - torch.tensor(3.041)).item() < 1e-3
+
+    # Test 3 - Two quantiles, observation is higher than the highest quantile
+    y = torch.tensor([4])
+    pred = torch.tensor([[[1, 3]]])
+    probas = torch.tensor([0.25, 0.75])
+    crps = QuantilesCRPS(probas)
+    assert abs(crps(pred, y) - torch.tensor(0.7917)).item() < 1e-3
+
+    # Test 4 - Two quantiles, observation is exactly the second quantile
+    y = torch.tensor([3])
+    pred = torch.tensor([[[1, 3]]])
+    probas = torch.tensor([0.25, 0.75])
+    crps = QuantilesCRPS(probas)
+    assert abs(crps(pred, y) - torch.tensor(0.5417)).item() < 1e-3
+
+    # Test 5 - Three quantiles, observation is at the middle between
+    # the first and second quantiles
+    y = torch.tensor([1.5])
+    pred = torch.tensor([[[1, 2, 3.5]]])
+    probas = torch.tensor([0.25, 0.5, 0.75])
+    crps = QuantilesCRPS(probas)
+    assert abs(crps(pred, y) - torch.tensor(0.8802)).item() < 1e-3
+

@@ -36,7 +36,7 @@ def create_output_distrib(distrib_name, tasks, cfg):
     distribution : the distribution object.
     """
     if distrib_name in ['quantile_composite', 'qc']:
-        distribution = QuantileCompositeDistribution(0, 90)
+        distribution = QuantileCompositeDistribution()
     elif distrib_name == 'normal':
         distribution = NormalDistribution()
     elif distrib_name == 'deterministic':
