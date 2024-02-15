@@ -325,3 +325,25 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Retrieve the size of the datacube after cropping:
         h, w = self.transforms.transforms[-1].size
         return c, self.past_steps, h, w
+
+    def get_sample_intensities(self):
+        """
+        For every sequences S_1, ..., S_N, returns the intensities
+        at each time step.
+        Can only be called if the task 'vmax' is enabled.
+
+        Returns
+        -------
+        intensities: torch.Tensor
+            The intensities of the samples as tensor of shape (N, T).
+        """
+        if 'vmax' not in self.output_tabular_tasks:
+            raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
+        # We'll call __getitem__ for each sample
+        intensities = []
+        for i in range(len(self)):
+            _, _, output_time_series, _ = self[i]
+            intensities.append(output_time_series['vmax'])
+        # Denormalize the intensities
+        intensities = self.denormalize_tabular_target({'vmax': torch.stack(intensities, dim=0)})['vmax']
+        return intensities

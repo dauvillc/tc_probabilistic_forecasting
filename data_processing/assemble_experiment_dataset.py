@@ -4,6 +4,7 @@ Implements a function to assemble the dataset for the experiment.
 import torch
 from data_processing.custom_dataset import SuccessiveStepsDataset
 from data_processing.datasets import load_tcir
+from utils.sampling import inverse_intensity_sampler
 from utils.datacube import datacube_to_tensor
 from utils.train_test_split import train_val_test_split
 from utils.utils import hours_to_sincos
@@ -87,9 +88,15 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     train_dataset.normalize_outputs(save_statistics=True)
     val_dataset.normalize_inputs(other_dataset=train_dataset)
     val_dataset.normalize_outputs(other_dataset=train_dataset)
-    # Create the train and validation data loaders
+    # Create the sampler and data loaders
     batch_size = cfg['training_settings']['batch_size']
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    if ('sampling_weights' in cfg['training_settings']) and (cfg['training_settings']['sampling_weights']):
+        # Create the sampler
+        sampler = inverse_intensity_sampler(train_dataset.get_sample_intensities(),
+                                            plot_weights='figures/weights.png')
+        train_loader = torch.utils.data.DataLoader(train_dataset, sampler=sampler, batch_size=batch_size)
+    else:
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
     return train_dataset, val_dataset, train_loader, val_loader
