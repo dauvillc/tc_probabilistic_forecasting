@@ -4,6 +4,7 @@ Implements various utilities.
 import numpy as np
 import pandas as pd
 import torch
+import collections
 
 
 def to_numpy(tensor):
@@ -47,7 +48,7 @@ def hours_to_sincos(times):
     Parameters
     ----------
     times : array-like of datetime.datetime
-        The times to convert. Only the hours are considered. 
+        The times to convert. Only the hours are considered.
 
     Returns
     -------
@@ -70,7 +71,7 @@ def matplotlib_markers(num):
     """
     Returns a list of matplotlib markers, which can be used to plot num lines
     and cycles through the markers.
-    
+
     Parameters
     ----------
     num : int
@@ -100,4 +101,15 @@ def sshs_category(wind_speed):
     # Compute the category (which goes from -1 to 5)
     return torch.bucketize(wind_speed, thresholds, right=True) - 2
 
-    
+
+def update_dict(d, u):
+    """
+    Updates a dictionary recursively.
+    Taken from https://stackoverflow.com/questions/3232943/update-value-of-a-nested-dictionary-of-varying-depth
+    """
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = update_dict(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
