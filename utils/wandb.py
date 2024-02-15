@@ -14,7 +14,7 @@ def make_predictions(run_ids, current_run):
     """
     For a set of W&B run ids, retrieve the corresponding models and make
     predictions on the validation set.
-    
+
     Parameters
     ----------
     run_ids : list of str
@@ -69,10 +69,10 @@ def make_predictions(run_ids, current_run):
         # the same tasks (although some must be in common).
         # That means we have to recreate the dataset for each experiment.
         train_dataset, val_dataset, _, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
-       
+
         # ===== MODEL RECONSTUCTION ===== #
         # Retrieve the checkpoint from wandb
-        artifact = current_run.use_artifact(f'arches/tc_prediction/model-{run_id}:latest')
+        artifact = current_run.use_artifact(f'arches/tc_prediction/model-{run_id}:best')
         artifact_dir = artifact.download('/home/cdauvill/scratch/artifacts/')
         checkpoint = Path(artifact_dir) / 'model.ckpt'
         # Reconstruct the model from the checkpoint
@@ -84,7 +84,6 @@ def make_predictions(run_ids, current_run):
                                                           tabular_tasks=tasks,
                                                           train_dataset=train_dataset,
                                                           val_dataset=val_dataset,
-                                                          datacube_tasks={},
                                                           cfg=cfg)
         trainer = pl.Trainer(accelerator='gpu')
 
@@ -99,7 +98,7 @@ def make_predictions(run_ids, current_run):
             # (for the multivariate normal distribution)
             if isinstance(model_predictions[0][task], tuple):
                 n_tensors = len(model_predictions[0][task])
-                concatenated_predictions[task] = tuple(torch.cat([batch[task][i] for batch in model_predictions])      
+                concatenated_predictions[task] = tuple(torch.cat([batch[task][i] for batch in model_predictions])
                                                          for i in range(n_tensors))
             else:
                 concatenated_predictions[task] = torch.cat([batch[task] for batch in model_predictions])
@@ -115,6 +114,6 @@ def make_predictions(run_ids, current_run):
     # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
     # Remark: the normalization constants were computed on the training set.
     targets = val_dataset.denormalize_tabular_target(targets)
- 
+
     return run_configs, run_tasks, predictions, targets
 
