@@ -13,7 +13,9 @@ import pandas as pd
 
 
 if __name__ == '__main__':
-    # Load config file 
+    # Set numpy's random seed for reproducibility
+    np.random.seed(0)
+    # Load config file
     with open("config.yml", 'r') as cfg_file:
         cfg = yaml.safe_load(cfg_file)
     _TCIR_PATH_ = cfg['paths']['tcir']
@@ -90,7 +92,7 @@ if __name__ == '__main__':
 
     # Finally, we'll add a coordinate for the variable dimension
     datacube = datacube.assign_coords(variable=('variable', ['IR', 'PMW']))
-    
+
     # === OUTLIERS AND MISSING VALUES ==== (SEE NOTEBOOK FOR EXPLAINATIONS)
     print("Processing outliers and missing values...")
     # Convert the unreasonably large values to NaNs
@@ -98,13 +100,13 @@ if __name__ == '__main__':
     # Compute the ratio of NaNs (native + converted from outliers) for each sample
     nan_counts = np.array([datacube[k].isnull().sum() for k in range(datacube.shape[0])])
     nan_ratios = nan_counts / (datacube.shape[1] * datacube.shape[2] * 2)
-    
+
     # * For every storm S that contains at least one sample that is more than 10% NaN:
     #   * Find all segments of S's trajectory that do not contain any NaN;
     #   * Consider each of those segments as an independent trajectory, by giving them new SIDs.
     #   * Discard the samples containing NaNs (and that are thus fully NaN).
     # * Where the images contain less than 10% of NaNs, fill them with zeros.
-    
+
     # Retrieve the index of the samples that are fully NaN.
     where_full_nan = np.where(nan_ratios >= 0.1)[0]
     # Retrieve the SIDs corresponding to those samples
