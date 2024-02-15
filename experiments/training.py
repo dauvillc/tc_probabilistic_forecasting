@@ -3,18 +3,20 @@ Trains a model on the TC intensity forecasting task.
 """
 import sys
 sys.path.append("./")
-import pytorch_lightning as pl
-import yaml
-import wandb
-from pathlib import Path
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import WandbLogger
-from models.lightning_structure import StormPredictionModel
-from data_processing.assemble_experiment_dataset import load_dataset
-from distributions.quantile_composite import QuantileCompositeDistribution
-from distributions.normal import NormalDistribution
-from distributions.deterministic import DeterministicDistribution
+from utils.utils import update_dict
 from distributions.multivariate_normal import MultivariateNormal
+from distributions.deterministic import DeterministicDistribution
+from distributions.normal import NormalDistribution
+from distributions.quantile_composite import QuantileCompositeDistribution
+from data_processing.assemble_experiment_dataset import load_dataset
+from models.lightning_structure import StormPredictionModel
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pathlib import Path
+import argparse
+import wandb
+import yaml
+import pytorch_lightning as pl
 
 
 def create_output_distrib(distrib_name, tasks, cfg):
@@ -79,9 +81,16 @@ def create_tasks(cfg):
 
 
 if __name__ == "__main__":
-    pl.seed_everything(42)
+    pl.seed_everything(123)
     # Some parameters
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
+
+    # Argument parser
+    parser = argparse.ArgumentParser()
+    # Add the --sweep flag to indicate that the script is run as part of a sweep
+    parser.add_argument('--sweep', action='store_true',
+                        help="Flag to indicate that the script is run as part of a sweep.")
+    args = parser.parse_args()
 
     # Load the training configuration file
     with open("training_cfg.yml", "r") as f:
@@ -98,19 +107,25 @@ if __name__ == "__main__":
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
 
+    # Initialize W&B
+    current_run = wandb.init()
+
+    # Modifications in case the script is run as part of a sweep
+    if args.sweep:
+        # Replace the default values of the configuration file by the ones from the sweep
+        cfg = update_dict(cfg, wandb.config)
+
     # ====== TASKS DEFINITION ====== #
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
+    train_dataset, val_dataset, train_loader, val_loader = load_dataset(
+        cfg, input_variables, tasks, ['tcir'])
 
     # ====== W+B LOGGER ====== #
-    # Initialize W&B
-    current_run = wandb.init(project="tc_prediction",
-                             name=experiment_cfg['name'],
-                             job_type="training")
     # Initialize the W+B logger
-    wandb_logger = WandbLogger(project="tc_prediction", name=experiment_cfg['name'], log_model="all")
+    wandb_logger = WandbLogger(
+        project="tc_prediction", name=experiment_cfg['name'], log_model="all")
     # Log the config and hyperparameters
     wandb_logger.log_hyperparams(cfg)
     wandb_logger.log_hyperparams({"input_variables": input_variables})
@@ -119,12 +134,9 @@ if __name__ == "__main__":
     # Initialize the model
     num_input_variables = len(input_variables)
     datacube_shape = train_dataset.datacube_shape('tcir')
-    # datacube_task = {'tcir': {'output_channels': 2}}
-    datacube_task = {}
     # If training from scratch, create a new model
     if experiment_cfg['use-pre-trained-id'] is None:
         model = StormPredictionModel(datacube_shape, num_input_variables, tasks,
-                                     datacube_task,
                                      train_dataset, val_dataset,
                                      cfg)
     # If fine-tuning, load the model from a previous run
@@ -133,8 +145,10 @@ if __name__ == "__main__":
         run_id = experiment_cfg['use-pre-trained-id']
         try:
             print("Using model from run ", run_id)
-            artifact = current_run.use_artifact(f'arches/tc_prediction/model-{run_id}:latest')
-            artifact_dir = artifact.download('/home/cdauvill/scratch/artifacts/')
+            artifact = current_run.use_artifact(
+                f'arches/tc_prediction/model-{run_id}:latest')
+            artifact_dir = artifact.download(
+                '/home/cdauvill/scratch/artifacts/')
         except wandb.errors.CommError:
             print(f"Could not find the model {run_id} in the W&B artifacts. ")
             sys.exit(1)
@@ -146,7 +160,6 @@ if __name__ == "__main__":
                                                           tabular_tasks=tasks,
                                                           train_dataset=train_dataset,
                                                           val_dataset=val_dataset,
-                                                          datacube_tasks=datacube_task,
                                                           cfg=cfg)
 
     # ====== MODELS TRAINING ====== #
@@ -157,4 +170,3 @@ if __name__ == "__main__":
                                                     dirpath=config['paths']['checkpoints']),
                                     LearningRateMonitor()])
     trainer.fit(model, train_loader, val_loader)
-
