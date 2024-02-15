@@ -35,7 +35,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
                 The variables to predict.
     datacubes: Mapping of str to torch.Tensor
         The input datacubes. The keys are the names of the datacubes and the values are
-        the datacubes themselves. Each datacube must be of shape (N, C, H, W), where N 
+        the datacubes themselves. Each datacube must be of shape (N, C, H, W), where N
         is the number of samples, one for each pair (SID, ISO_TIME).
     input_datacubes: list of str
         Which datacubes to use as input. The names must be keys of datacubes.
@@ -194,17 +194,17 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Normalize the output datacubes.
         for name in self.output_datacubes:
             self.datacubes[name] = (self.datacubes[name] - self.output_datacube_means[name]) / self.output_datacube_stds[name]
-    
+
     def denormalize_tabular_target(self, variables):
         """
         Denormalize a batch of target variables, using the constants stored in the dataset.
-        
+
         Parameters
         ----------
         variables: Mapping of str to torch.Tensor
             The variables to denormalize. The keys are tasks names and the values are
             torch.Tensors.
-        
+
         Returns
         -------
         denormalized_variables: Mapping of str to torch.Tensor
@@ -229,11 +229,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         ----------
         task: str
             The name of the task.
-        
+
         Returns
         -------
-        input_means: torch.Tensor 
-        input_stds: torch.Tensor
+        means: torch.Tensor
+        stds: torch.Tensor
         """
         # Retrieve the output variables of the task
         variables = self.get_task_output_variables(task)
@@ -248,7 +248,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         Returns the idx-th sample of the dataset, as a tuple
         (input_time_series, input_datacubes, output_time_series, output_datacubes).
-        
+
         input_time_series is a Mapping of str to torch.Tensor, where the keys are the input
         variable names and the values are torch.Tensors of shape (batch_size, P, K) where K
         is the number of variables in the input time series.
@@ -299,7 +299,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         input_datacubes, output_datacubes = self.transforms(input_datacubes, output_datacubes)
 
         return input_time_series, input_datacubes, output_time_series, output_datacubes
-    
+
     def get_task_output_variables(self, task):
         """
         For a given task name, returns the list of the output variables
