@@ -1,6 +1,6 @@
-name: sweep_vmax_r34_mslp_loc_deterministic
-program: experiments/sweep_training.py
-method: grid
+name: vmax_mse_LR
+program: experiments/training.py
+method: bayes
 metric:
   name: val_loss
   goal: minimize
@@ -8,12 +8,19 @@ parameters:
   training_settings:
     parameters:
       initial_lr:
-        values: [0.001]
-  model_hyperparameters:
-    parameters:
-      encoder_depth:
-        values: [7]
-      encoder_channels:
-        values: [2, 4, 8]
-      clm_reduction_factor:
-        values: [2, 4, 8]
+        distribution: log_normal
+        mu: -6.908
+        sigma: 0.85
+      beta1:
+        distribution: log_uniform_values
+        min: 0.9
+        max: 0.999
+      beta2:
+        distribution: uniform
+        min: 0.95
+        max: 0.999
+
+command:
+  - python
+  - ${program}
+  - "--sweep"

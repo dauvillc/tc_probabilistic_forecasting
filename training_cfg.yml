@@ -1,5 +1,5 @@
 experiment:
-  name: vmax_mse_smallenc
+  name: vmax_mse_v2
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -36,13 +36,19 @@ training_settings:
   weight_decay: 0
   # Whether to enable data augmentation
   data_augmentation: true
+  # Sampling weights
+  sampling_weights: false
+  # Whether to use a weighted loss for extreme events
+  use_weighted_loss: false
   # Learning-related params
   initial_lr: 0.001
   final_lr: 1.0e-7
+  beta1: 0.9
+  beta2: 0.999
   # If fine-tuning, freeze the encoder
   freeze_encoder:
   # Optionally, specify a single task to train on
-  trained_task: 
+  trained_task:
 model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
   base_block: conv
