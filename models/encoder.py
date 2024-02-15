@@ -4,8 +4,11 @@ from models.cnn3d import DownsamplingBlock3D
 
 class Encoder3d(nn.Module):
     """
-    A simple 3D CNN Encoder. 
-    
+    3D Convolutional encoder. Input is a 5D tensor (N, C, D, H, W).
+    The encoder is a sequence of 3D Downsampling blocks. Each block divides
+    the height and width by 2 and doubles the number of channels. The first
+    blocks divide the depth dimension by 2, until the depth is 1.
+
     Parameters
     ----------
     input_shape: tuple of int (C, D, H, W)
@@ -17,8 +20,9 @@ class Encoder3d(nn.Module):
     hidden_channels: int, optional
         Number of hidden channels in the first convolutional layer.
     """
+
     def __init__(self, input_shape, base_block,
-                 conv_blocks=7, hidden_channels=4):
+                 conv_blocks=5, hidden_channels=4):
         super().__init__()
         self.base_block = base_block
         input_channels, d, h, w = input_shape
@@ -29,14 +33,23 @@ class Encoder3d(nn.Module):
         # Create the successive convolutional blocks
         self.conv_blocks = nn.ModuleList([])
         for i in range(0, conv_blocks):
-            new_c = (i + 1) * hidden_channels
+            new_c = 2 ** i * hidden_channels
             # Save the number of channels in the output of the block
             self.output_channels.append(new_c)
-            self.conv_blocks.append(DownsamplingBlock3D(c, new_c, base_block)) # DxHxW -> DxH/2xW/2
+            # Create the block
+            # The kernel size is 3x3x3 for all blocks. The kernel size for the
+            # depth dimension is:
+            # - 2 if the depth is > 1
+            # - 1 if the depth is 1
+            kernel_size = (2, 3, 3) if d > 1 else (1, 3, 3)
+            self.conv_blocks.append(DownsamplingBlock3D(c, new_c, base_block,
+                                                        kernel_size))  # DxHxW -> D/2xH/2xW/2
             c = new_c
             # Keep track of the output size of each block
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))
-        self.output_shape = (c, d, h, w)
+        # Add a global average pooling layer
+        self.global_pooling = nn.AdaptiveAvgPool3d(1)
+        self.output_shape = (c, 1, 1, 1)
 
     def forward(self, x):
         """
@@ -46,12 +59,12 @@ class Encoder3d(nn.Module):
             Input batch.
         Returns
         -------
-        A list of torch tensors of dimensions (N, C, D, H, W)
-            The output of each block.
+        x: torch tensor of dimensions (N, C, 1, 1, 1)
+            Output batch.
         """
         # Apply the convolutional blocks
-        outputs = []
         for block in self.conv_blocks:
             x = block(x)
-            outputs.append(x)
-        return outputs
+        # Apply the global pooling
+        x = self.global_pooling(x)
+        return x

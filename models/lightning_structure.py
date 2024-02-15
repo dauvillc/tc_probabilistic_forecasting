@@ -5,8 +5,8 @@ import torch
 from torch import nn
 import pytorch_lightning as pl
 from models.encoder import Encoder3d
-from models.decoder import Decoder3d
 from models.linear import CommonLinearModule, PredictionHead, MultivariatePredictionHead
+from loss_functions.weighted_loss import WeightedLoss
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -38,13 +38,7 @@ class StormPredictionModel(pl.LightningModule):
         - 'output_size': int
             The number of values to predict for the task.
         - 'distrib_obj': Distribution object implementing loss_function, metrics
-            and optionally activation. 
-    datacube_tasks: Mapping of str to tuple
-        The tasks whose targets are datacubes, with the keys being the task names and the values
-        being:
-        - 'output_channels: int
-            The number of channels of the output datacube.
-        - 'distrib_obj': Distribution object implementing loss_function and metrics.
+            and optionally activation.
     train_dataset: SuccessiveStormsDataset
         Pointer to the training dataset.
     val_dataset: SuccessiveStormsDataset
@@ -52,16 +46,18 @@ class StormPredictionModel(pl.LightningModule):
     cfg: dict
         The configuration dictionary.
     """
-    def __init__(self, input_datacube_shape, num_input_variables, tabular_tasks, datacube_tasks,
+
+    def __init__(self, input_datacube_shape, num_input_variables, tabular_tasks,
                  train_dataset, val_dataset, cfg):
         super().__init__()
         self.tabular_tasks = tabular_tasks
-        self.datacube_tasks = datacube_tasks
         self.train_dataset, self.val_dataset = train_dataset, val_dataset
         self.model_cfg = cfg['model_hyperparameters']
         self.training_cfg = cfg['training_settings']
         self.input_datacube_shape = input_datacube_shape
         self.num_input_variables = num_input_variables
+        self.use_weighted_loss = ('use_weighted_loss' in self.training_cfg
+                                  and self.training_cfg['use_weighted_loss'])
         future_steps = cfg['experiment']['future_steps']
         # Create the encoder
         self.encoder = Encoder3d(input_datacube_shape,
@@ -82,19 +78,16 @@ class StormPredictionModel(pl.LightningModule):
             if task_params['distrib_obj'].is_multivariate:
                 self.prediction_heads[task] = MultivariatePredictionHead(self.common_linear_model.output_size,
                                                                          task_params['output_size'])
-            else:   
+            else:
                 self.prediction_heads[task] = PredictionHead(self.common_linear_model.output_size,
                                                              task_params['output_size'], future_steps)
 
-        # Create the decoder if needed
-        if len(datacube_tasks) > 0:
-            # The output of the decoder is all target datacubes concatenated along the channel dimension
-            decoder_output_channels = sum([task['output_channels'] for task in datacube_tasks.values()])
-            self.decoder = Decoder3d(self.encoder, decoder_output_channels,
-                                     self.model_cfg['base_block'],
-                                     self.model_cfg['encoder_depth'])
+        # Create the WeightedLoss object if needed
+        if self.use_weighted_loss:
+            intensities = train_dataset.get_sample_intensities()
+            self.weighted_loss = WeightedLoss(
+                intensities, plot_weights="figures/weights.png")
 
-    
     def compute_losses(self, batch, train_or_val='train'):
         """
         Computes the losses for a single batch (subfunction of training_step
@@ -102,24 +95,29 @@ class StormPredictionModel(pl.LightningModule):
         """
         past_variables, past_datacubes, future_variables, future_datacubes = batch
         predictions = self.forward(past_variables, past_datacubes)
+        # If using a weighted loss, the loss function should return one value per sample
+        # and not the mean over the batch
+        reduce_mean = not self.use_weighted_loss
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
-            losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task])
-            self.log(f"{train_or_val}_loss_{task}", losses[task], on_step=False, on_epoch=True)
-        # Compute the losses for the datacube tasks
-        for task, task_params in self.datacube_tasks.items():
-            losses[task] = nn.MSELoss()(predictions[task], future_datacubes[task])
-            self.log(f"{train_or_val}_loss_{task}", losses[task], on_step=False, on_epoch=True)
+            losses[task] = task_params['distrib_obj'].loss_function(predictions[task], future_variables[task],
+                                                                    reduce_mean=reduce_mean)
+            # If the weighted loss is used, apply the weights
+            if self.use_weighted_loss:
+                losses[task] = self.weighted_loss(
+                    losses[task], future_variables['vmax'])
+            self.log(f"{train_or_val}_loss_{task}",
+                     losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
-        # In the case of a single task, the total loss is the loss of the trained task
+        # In the case of single-task finetuning, the total loss is the loss of the trained task
         if self.training_cfg['trained_task'] is not None:
             total_loss = losses[self.training_cfg['trained_task']]
         else:
             total_loss = sum(losses.values())
-        self.log(f"{train_or_val}_loss", total_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(f"{train_or_val}_loss", total_loss,
+                 on_step=False, on_epoch=True, prog_bar=True)
         return total_loss
-
 
     def training_step(self, batch, batch_idx):
         """
@@ -140,17 +138,21 @@ class StormPredictionModel(pl.LightningModule):
 
         # Before computing the metrics, we'll denormalize the future values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
-        future_variables = self.val_dataset.denormalize_tabular_target(future_variables)
+        future_variables = self.val_dataset.denormalize_tabular_target(
+            future_variables)
 
         # Compute the metrics for each task
         for task, task_params in self.tabular_tasks.items():
             # Denormalize the predictions using the task-specific denormalization function
             # so that the metrics are computed in the original scale
-            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task, self.train_dataset)
+            predictions[task] = task_params['distrib_obj'].denormalize(
+                predictions[task], task, self.train_dataset)
             for metric_name, metric in task_params['distrib_obj'].metrics.items():
                 # Compute the metric in the original scale
-                metric_value = metric(predictions[task], future_variables[task])
-                self.log(f"val_{metric_name}_{task}", metric_value, on_step=False, on_epoch=True)
+                metric_value = metric(
+                    predictions[task], future_variables[task])
+                self.log(f"val_{metric_name}_{task}",
+                         metric_value, on_step=False, on_epoch=True)
 
         return total_loss
 
@@ -162,9 +164,10 @@ class StormPredictionModel(pl.LightningModule):
         predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions using the task-specific denormalization function
         for task, task_params in self.tabular_tasks.items():
-            predictions[task] = task_params['distrib_obj'].denormalize(predictions[task], task, self.train_dataset)
+            predictions[task] = task_params['distrib_obj'].denormalize(
+                predictions[task], task, self.train_dataset)
         return predictions
- 
+
     def forward(self, past_variables, past_datacubes):
         """
         Parameters
@@ -185,9 +188,9 @@ class StormPredictionModel(pl.LightningModule):
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)
         # Encode the past datacubes into a latent space
-        encoder_outputs = self.encoder(past_datacubes)  # Returns the skip connections
+        # Returns the skip connections
+        latent_space = self.encoder(past_datacubes)
         # Apply the common linear model to the latent space and the past variables
-        latent_space = encoder_outputs[-1]
         latent_space = self.common_linear_model(latent_space, past_variables)
         # Apply the prediction heads
         predictions = {}
@@ -195,19 +198,8 @@ class StormPredictionModel(pl.LightningModule):
             predictions[task] = self.prediction_heads[task](latent_space)
             # Check if there is an activation function specific to the distribution
             if hasattr(task_params['distrib_obj'], 'activation'):
-                predictions[task] = task_params['distrib_obj'].activation(predictions[task])
-        # Apply the decoder if needed
-        if len(self.datacube_tasks) > 0:
-            # Reshape the latent space from a vector to a tensor of shape (T, h, w, c)
-            latent_space = latent_space.view(-1, *self.encoder.output_shape)
-            datacube_preds = self.decoder(latent_space, encoder_outputs)
-            # The target datacubes are concatenated along the channel dimension, retrieve them
-            # individually
-            start_channel = 0 
-            for task, settings in self.datacube_tasks.items():
-                end_channel = start_channel + settings['output_channels']
-                predictions[task] = datacube_preds[:, start_channel:end_channel]
-                start_channel = end_channel
+                predictions[task] = task_params['distrib_obj'].activation(
+                    predictions[task])
         return predictions
 
     def configure_optimizers(self):
@@ -230,15 +222,17 @@ class StormPredictionModel(pl.LightningModule):
                 if task != self.training_cfg['trained_task']:
                     for param in self.prediction_heads[task].parameters():
                         param.requires_grad = False
-        
+
         # Be careful to only update the parameters that require gradients
         updated_params = [p for p in self.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(updated_params, lr=self.training_cfg['initial_lr'],
-                                     weight_decay=self.training_cfg['weight_decay'])
+        optimizer = torch.optim.AdamW(updated_params, lr=self.training_cfg['initial_lr'],
+                                      betas=(
+                                          self.training_cfg['beta1'], self.training_cfg['beta2']),
+                                      weight_decay=self.training_cfg['weight_decay'])
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                   T_max=self.training_cfg['epochs'],
                                                                   eta_min=self.training_cfg['final_lr'])
         return {
-                "optimizer": optimizer,
-                "lr_scheduler": lr_scheduler,
-                }
+            "optimizer": optimizer,
+            "lr_scheduler": lr_scheduler,
+        }

@@ -29,7 +29,7 @@ class CommonLinearModule(nn.Module):
     """
     def __init__(self, input_shape, output_depth,
                  n_input_vars, hidden_size_reduction):
-        super().__init__() 
+        super().__init__()
         # Compute the size of the latent space
         c, d, h, w = input_shape
         self.input_size = c * d * h * w
@@ -63,7 +63,7 @@ class CommonLinearModule(nn.Module):
         # Concatenate the past variables into a single tensor
         past_vars = torch.cat(list(past_vars.values()), dim=1)
         # Flatten the latent space
-        latent_space = latent_space.reshape(-1, self.input_size)
+        latent_space = latent_space.reshape(latent_space.shape[0], -1) # (N, input_size)
         # Embed the past variables
         past_vars = torch.selu(self.embedding_1(past_vars))
         past_vars = torch.selu(self.embedding_2(past_vars))
