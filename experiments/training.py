@@ -107,13 +107,14 @@ if __name__ == "__main__":
     if past_steps < 3:
         raise ValueError("The number of past steps must be >= 3.")
 
-    # Initialize W&B
-    current_run = wandb.init()
-
     # Modifications in case the script is run as part of a sweep
     if args.sweep:
+        # Initialize W&B
+        current_run = wandb.init(project="tc_prediction")
         # Replace the default values of the configuration file by the ones from the sweep
         cfg = update_dict(cfg, wandb.config)
+    else:
+        current_run = wandb.init(project="tc_prediction", name=experiment_cfg['name'])
 
     # ====== TASKS DEFINITION ====== #
     tasks = create_tasks(cfg)
@@ -124,8 +125,7 @@ if __name__ == "__main__":
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
-    wandb_logger = WandbLogger(
-        project="tc_prediction", name=experiment_cfg['name'], log_model="all")
+    wandb_logger = WandbLogger(log_model="all")
     # Log the config and hyperparameters
     wandb_logger.log_hyperparams(cfg)
     wandb_logger.log_hyperparams({"input_variables": input_variables})
