@@ -162,9 +162,7 @@ class MultivariateNormal:
 
         Returns
         -------
-        The RMSE between the mean of the distribution and the observed values.
-        If reduce_mean is True: returns a scalar.
-        Otherwise, returns a torch.Tensor of shape (N,).
+        Scalar, RMSE between the mean of the distribution and the observed values.
         """
         mean, _ = predicted_params
         return torch.sqrt(torch.mean((mean - y)**2))

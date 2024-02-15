@@ -20,14 +20,14 @@ def normal_crps(mu, sigma, y):
 
     Returns
     -------
-    torch.Tensor of shape (N, 1)
+    torch.Tensor of same shape as y
         The CRPS for each sample.
     """
-    normal_dist = Normal(torch.zeros_like(mu), torch.ones_like(sigma))
+    normal_dist = Normal(0, 1)
     std_y = (y - mu) / sigma
-    crps = sigma * (std_y * (2 * normal_dist.cdf(std_y) - 1)\
-            + 2 * torch.exp(normal_dist.log_prob(std_y))\
-            - 1 / torch.sqrt(torch.tensor(torch.pi)))
+    crps = sigma * (std_y * (2 * normal_dist.cdf(std_y) - 1)
+                    + 2 * torch.exp(normal_dist.log_prob(std_y))
+                    - 1 / torch.sqrt(torch.tensor(torch.pi)))
     return crps
 
 
@@ -53,6 +53,7 @@ class NormalDistribution:
     Parameters
     ----------
     """
+
     def __init__(self):
         self.n_parameters = 2
         self.is_multivariate = False
@@ -61,8 +62,8 @@ class NormalDistribution:
         # The MAE is the mean absolute error between the predicted mean (which is also the
         # median) and the true value.
         self.metrics = {
-                'MAE': normal_mae,
-                'CRPS': self.loss_function,
+            'MAE': normal_mae,
+            'CRPS': self.loss_function,
         }
 
     def inverse_cdf(self, predicted_params, u):
@@ -73,7 +74,7 @@ class NormalDistribution:
         ----------
         predicted_params : torch.Tensor of shape (N, 2)
             The predicted parameters of the normal distribution for each sample.
-        u : float 
+        u : float
             The probability at which the inverse CDF is computed.
 
         Returns
@@ -84,12 +85,12 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
         normal_dist = Normal(mu, sigma)
         return normal_dist.icdf(torch.tensor(u))
-    
+
     def activation(self, predicted_params):
         """
         Applies the Softplus activation to the predicted standard deviation,
         to ensure that it is positive.
-        
+
         Parameters
         ----------
         predicted_params : torch.Tensor of shape (N, T, 2)
@@ -119,14 +120,12 @@ class NormalDistribution:
         If reduce_mean is True, returns a torch.Tensor of shape (1,)
         Otherwise, returns a torch.Tensor of shape (N,)
         """
-        # We first need to flatten the tensors to get rid of the time dimension
-        predicted_params = predicted_params.view(-1, self.n_parameters)
-        y = y.flatten()
-        mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
-        # Clamp sigma to a small positive value
-        valid_sigma = torch.clamp(sigma, min=1e-2)
+        mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
         # Compute the CRPS
-        loss = normal_crps(mu, valid_sigma, y)
+        loss = normal_crps(mu, sigma, y)
+        # Compute the mean over the time steps
+        loss = loss.mean(dim=-1)
+        # If necessary, reduce to the mean over the batch
         if reduce_mean:
             return loss.mean()
         else:
@@ -162,7 +161,6 @@ class NormalDistribution:
         # Standard deviation of the distribution:
         predicted_params[:, :, 1] = predicted_params[:, :, 1] * stds
         return predicted_params
-        
+
     def hyperparameters(self):
         return {}
-

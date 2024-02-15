@@ -5,21 +5,43 @@ model into the probabilistic pipeline.
 import torch
 
 
-def flatten_MSE(y_pred, y_true):
+def mse(y_pred, y_true, reduce_mean=True):
     """
-    Flattens the tensor and computes the MSE.
+    MSE Loss.
+
+    Parameters
+    ----------
+    y_pred : torch.Tensor of shape (N, T, 1)
+        The predicted values for each sample and time step.
+    y_true : torch.Tensor of shape (N, T)
     """
-    return torch.mean((y_pred.flatten() - y_true.flatten()) ** 2)
+    y_pred = y_pred.squeeze(-1)
+    loss = (y_pred - y_true) ** 2
+    # Average over the time steps
+    loss = torch.mean(loss, dim=1)
+    # If reduce_mean is True, average over the batch
+    if reduce_mean:
+        return torch.mean(loss)
+    else:
+        return loss
 
 
-def flatten_MAE(y_pred, y_true):
+def mae(y_pred, y_true, reduce_mean=True):
     """
     Flattens the tensor and computes the MAE.
     """
-    return torch.mean(torch.abs(y_pred.flatten() - y_true.flatten()))
+    y_pred = y_pred.squeeze(-1)
+    loss = torch.abs(y_pred - y_true)
+    # Average over the time steps
+    loss = torch.mean(loss, dim=1)
+    # If reduce_mean is True, average over the batch
+    if reduce_mean:
+        return torch.mean(loss)
+    else:
+        return loss
 
 
-def flatten_RMSE(y_pred, y_true):
+def flatten_RMSE(y_pred, y_true, reduce_mean=True):
     """
     Flattens the tensor and computes the RMSE.
     """
@@ -42,21 +64,21 @@ class DeterministicDistribution:
 
         # The output of the model will have shape (N, T, V) where N is the batch size,
         # T is the number of time steps and V is the number of output variables.
-        self.loss_function = flatten_MSE
-        
+        self.loss_function = mse
+
         # Define the metrics
         self.metrics = {
                 'RMSE': flatten_RMSE,
-                'MAE': flatten_MAE,
-                'CRPS': flatten_MAE  # The CRPS is the MAE for a deterministic distribution
+                'MAE': mae,
+                'CRPS': mae  # The CRPS is the MAE for a deterministic distribution
                 }
-    
+
     def hyperparameters(self):
         """
         Returns the hyperparameters of the distribution.
         """
         return {}
-    
+
     def cdf(self, y_pred, y):
         """
         Given a deterministic distribution that always outputs y, the CDF is defined as
@@ -74,7 +96,7 @@ class DeterministicDistribution:
     def activation(self, predicted_params):
         # Identity activation function
         return predicted_params
-    
+
     def denormalize(self, predicted_params, task, dataset):
         """
         Denormalizes the predicted values.
