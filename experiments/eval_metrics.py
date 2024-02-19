@@ -8,15 +8,16 @@ for each model, on the same plot.
 """
 import sys
 sys.path.append("./")
-import os
-import argparse
-import wandb
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from collections import defaultdict
-from utils.wandb import make_predictions
 from utils.utils import matplotlib_markers, sshs_category
+from utils.wandb import make_predictions
+from collections import defaultdict
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+import wandb
+import argparse
+import os
+import torch
 
 
 if __name__ == "__main__":
@@ -29,22 +30,24 @@ if __name__ == "__main__":
                         help="The ids of the experiment to evaluate.")
     args = parser.parse_args()
 
-    # Initialize W&B 
+    # Initialize W&B
     current_run_name = "metrics-" + "-".join(args.ids)
     current_run = wandb.init(project="tc_prediction",
                              name=current_run_name,
                              job_type="eval")
 
     # Make predictions using the models from the runs
-    all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(args.ids, current_run)
+    all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
+        args.ids, current_run)
     # Retrieve the run name for each run id
-    run_names = {run_id: all_runs_configs[run_id]['experiment']['name'] for run_id in args.ids}
+    run_names = {run_id: all_runs_configs[run_id]
+                 ['experiment']['name'] for run_id in args.ids}
 
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
     os.makedirs(save_folder, exist_ok=True)
 
-    # Create a list of markers and colors for the plots. Each run will be represented 
+    # Create a list of markers and colors for the plots. Each run will be represented
     # by a the same marker and color across all plots.
     markers = matplotlib_markers(len(args.ids))
     markers = {run_id: marker for run_id, marker in zip(args.ids, markers)}
@@ -92,7 +95,8 @@ if __name__ == "__main__":
             task_targets = targets[task_name]
             # Compute the metric without reducing the result to its mean
             metric_fn = all_runs_tasks[run_id][task_name]['distrib_obj'].metrics[metric_name]
-            metric_value = metric_fn(predictions, task_targets, reduce_mean=False)
+            metric_value = metric_fn(
+                predictions, task_targets, reduce_mean=False)
             # Store the results
             results[run_id] = metric_value
         # Make a boxplot of the results, with the run names as xticks
@@ -105,14 +109,15 @@ if __name__ == "__main__":
         ax.set_ylabel(metric_name)
         # Add a legend to indicate that the mean is in red and the median in orange
         ax.legend(handles=[plt.Line2D([0], [0], color='red', lw=1, ls='--', label='Mean'),
-                            plt.Line2D([0], [0], color='orange', lw=1, label='Median')])
+                           plt.Line2D([0], [0], color='orange', lw=1, label='Median')])
         # Save the figure
-        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}.png"))
+        fig.savefig(os.path.join(
+            save_folder, f"{task_name}-{metric_name}.png"))
         # Log the figure to W&B
         current_run.log({f"{task_name}-{metric_name}": wandb.Image(fig)})
         plt.close(fig)
 
-    # ======== CATEGORY METRICS ======== #
+    # ======== CATEGORY-WISE METRICS ======== #
     # In this section, we'll plot the metrics for every model, for each category of the SSHS.
     # Since we are forecasting multiple time steps ahead, we'll use the maximum SSHS category
     # reached over all time steps.
@@ -143,13 +148,16 @@ if __name__ == "__main__":
                 else:
                     cat_preds = predictions[mask]
                 # Compute the metric for the category
-                metric_value = metric_fn(cat_preds, cat_targets, reduce_mean=False)
+                metric_value = metric_fn(
+                    cat_preds, cat_targets, reduce_mean=False)
                 # Compute the mean and standard deviation of the metric for the category
                 metric_means.append(metric_value.mean())
                 metric_stds.append(metric_value.std())
-            metric_means, metric_stds = np.array(metric_means), np.array(metric_stds)
+            metric_means, metric_stds = np.array(
+                metric_means), np.array(metric_stds)
             # Plot the results
-            ax.plot(range(-1, 6), metric_means, color=colors[run_id], marker=markers[run_id], label=run_names[run_id])
+            ax.plot(range(-1, 6), metric_means,
+                    color=colors[run_id], marker=markers[run_id], label=run_names[run_id])
             ax.fill_between(range(-1, 6), metric_means - metric_stds, metric_means + metric_stds,
                             alpha=0.2, color=colors[run_id], label=run_names[run_id])
         ax.set_title(f"{task_name} - {metric_name}")
@@ -157,9 +165,34 @@ if __name__ == "__main__":
         ax.set_ylabel(metric_name)
         ax.legend()
         # Save the figure
-        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}-sshs.png"))
+        fig.savefig(os.path.join(
+            save_folder, f"{task_name}-{metric_name}-sshs.png"))
         # Log the figure to W&B
         current_run.log({f"{task_name}-{metric_name}-sshs": wandb.Image(fig)})
         plt.close(fig)
 
-
+    # Plot the number of samples per SSHS category
+    # (which is the same for all models)
+    fig, ax = plt.subplots(1, 1)
+    # Retrieve the targets
+    task_targets = targets[task_name]
+    # Bucketize the targets according to the SSHS category
+    target_sshs = sshs_category(task_targets)
+    # Compute the maximum SSHS category over all time steps
+    target_sshs, _ = target_sshs.max(dim=1)
+    # Make the max category a tensor of positive integers for bincount
+    target_sshs = (target_sshs.to(torch.int) + 1)
+    counts = target_sshs.to(torch.int).bincount(minlength=7)
+    # Plot the results
+    ax.bar(range(-1, 6), counts)
+    # Write above the bars the number of samples
+    for i, count in enumerate(counts):
+        ax.text(i-1, count, str(count.item()), ha='center', va='bottom')
+    ax.set_title("Number of samples per SSHS category")
+    ax.set_xlabel("Maximum SSHS category over t+6h,12h,18h,24h")
+    ax.set_ylabel("Number of samples")
+    # Save the figure
+    fig.savefig(os.path.join(save_folder, "sshs_counts.png"))
+    # Log the figure to W&B
+    current_run.log({"sshs_counts": wandb.Image(fig)})
+    plt.close(fig)
