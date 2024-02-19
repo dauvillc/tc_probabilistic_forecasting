@@ -55,6 +55,7 @@ def make_predictions(run_ids, current_run):
     targets = {}  # Mapping task -> targets
     run_configs = {}  # Mapping run_name -> config
     run_tasks = {}  # Mapping run_name -> tasks
+    prev_tasks = None
     for run, run_id in zip(runs, run_ids):
         # Retrieve the config from the run
         cfg = run.config
@@ -67,8 +68,10 @@ def make_predictions(run_ids, current_run):
         # ===== DATA LOADING ===== #
         # The dataset contains the same samples for every experiment, but not necessarily
         # the same tasks (although some must be in common).
-        # That means we have to recreate the dataset for each experiment.
-        train_dataset, val_dataset, _, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
+        # That means we have to recreate the dataset if the tasks are different.
+        if prev_tasks is None or set(prev_tasks) != set(tasks.keys()):
+            train_dataset, val_dataset, _, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
+        prev_tasks = list(tasks.keys())
 
         # ===== MODEL RECONSTUCTION ===== #
         # Retrieve the checkpoint from wandb
