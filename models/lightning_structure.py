@@ -85,7 +85,8 @@ class StormPredictionModel(pl.LightningModule):
         # Create the WeightedLoss object if needed
         if self.use_weighted_loss:
             self.weighted_loss = WeightedLoss(
-                train_dataset, plot_weights="figures/weighted_loss.png")
+                train_dataset, test_goodness_of_fit=True,
+                plot_weights="figures/weighted_loss.png")
 
     def compute_losses(self, batch, train_or_val='train'):
         """

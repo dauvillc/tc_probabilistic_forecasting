@@ -20,10 +20,16 @@ class WeightedLoss:
     train_dataset: SuccessiveStepsDataset
         The training dataset, implementing the get_sample_intensities and
         get_normalization_constants methods.
-    plot_weights : str or None
+    test_goodness_of_fit : bool, optional
+        If True, perform a Kolmogorov-Smirnov test to check if the fitted
+        gamma distribution is a good fit to the intensities.
+        Default is False.
+    plot_weights : str or None, optional
         If not None, the path to save a plot of the weights of the samples.
     """
-    def __init__(self, train_dataset, plot_weights=None):
+
+    def __init__(self, train_dataset, test_goodness_of_fit=False,
+                 plot_weights=None):
         # Save a pointer to the training dataset
         self.train_dataset = train_dataset
         # Get the intensities of the training samples
@@ -40,6 +46,14 @@ class WeightedLoss:
         # the concentration and rate parameters (alpha and beta) instead of the shape
         # and scale parameters (a and scale).
         self.distribution = Gamma(a, 1 / scale)
+
+        # Test the goodness of fit if requested
+        if test_goodness_of_fit:
+            # Perform a Kolmogorov-Smirnov test to check if the fitted gamma
+            # distribution is a good fit to the intensities
+            _, p_value = ss.kstest(max_intensities, 'gamma', self.params)
+            print(f"Kolmogorov-Smirnov test p-value: {p_value}")
+
         # Plot the weights if requested
         if plot_weights is not None:
             # On the same plot, show:
@@ -50,7 +64,8 @@ class WeightedLoss:
             fig, ax1 = plt.subplots()
             ax2 = ax1.twinx()
             # Plot an histogram of the maximum intensities
-            ax1.hist(max_intensities, density=True, alpha=0.5, label="Empirical max intensities distribution")
+            ax1.hist(max_intensities, density=True, alpha=0.5,
+                     label="Empirical max intensities distribution")
             # Plot the fitted gamma distribution
             x = torch.linspace(1, max(max_intensities), 100)
             y = ss.gamma.pdf(x, *self.params)
