@@ -8,16 +8,16 @@ for each model, on the same plot.
 """
 import sys
 sys.path.append("./")
-from utils.utils import matplotlib_markers, sshs_category
-from utils.wandb import make_predictions
-from collections import defaultdict
-import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
-import wandb
-import argparse
 import os
+import argparse
+import wandb
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 import torch
+from collections import defaultdict
+from utils.wandb import make_predictions
+from utils.utils import matplotlib_markers, sshs_category
 
 
 if __name__ == "__main__":
@@ -121,24 +121,24 @@ if __name__ == "__main__":
     # In this section, we'll plot the metrics for every model, for each category of the SSHS.
     # Since we are forecasting multiple time steps ahead, we'll use the maximum SSHS category
     # reached over all time steps.
-    # Once again, we'll do it every (task, metric) pair.
+    # First, we can compute the mask that indicates the SSHS category for each sample.
+    target_sshs = sshs_category(targets["vmax"])
+    target_sshs, _ = target_sshs.max(dim=1)
+    # Now, we'll evaluate every (task, metric) pair.
     for (task_name, metric_name), run_ids in metrics_map.items():
         # Create a figure with a single plot. The X axis will be the SSHS category,
         # and the Y axis the metric value.
         # Each model will be represented by its own line, with confidence intervals.
         fig, ax = plt.subplots(1, 1)
+        # Create lists to store the results: model, category, metric value
+        # Those will be assembled into a long-format dataframe
+        res_ids, res_cats, res_values = [], [], []
         for k, run_id in enumerate(run_ids):
             # Retrieve the predictions and targets for the run
             predictions = all_runs_predictions[run_id][task_name]
             task_targets = targets[task_name]
             # Retrieve the metric function
             metric_fn = all_runs_tasks[run_id][task_name]['distrib_obj'].metrics[metric_name]
-            # Bucketize the targets according to the SSHS category
-            target_sshs = sshs_category(task_targets)
-            # Compute the maximum SSHS category over all time steps
-            target_sshs, _ = target_sshs.max(dim=1)
-            # Compute the metric for each category
-            metric_means, metric_stds = [], []
             for category in range(-1, 6):
                 mask = target_sshs == category
                 cat_targets = task_targets[mask]
@@ -150,44 +150,47 @@ if __name__ == "__main__":
                 # Compute the metric for the category
                 metric_value = metric_fn(
                     cat_preds, cat_targets, reduce_mean=False)
-                # Compute the mean and standard deviation of the metric for the category
-                metric_means.append(metric_value.mean())
-                metric_stds.append(metric_value.std())
-            metric_means, metric_stds = np.array(
-                metric_means), np.array(metric_stds)
-            # Plot the results
-            ax.plot(range(-1, 6), metric_means,
-                    color=colors[run_id], marker=markers[run_id], label=run_names[run_id])
-            ax.fill_between(range(-1, 6), metric_means - metric_stds, metric_means + metric_stds,
-                            alpha=0.2, color=colors[run_id], label=run_names[run_id])
+                # Convert the metric values from tensors to lists
+                # If the metric is a scalar tensor, convert it to a list
+                metric_value = metric_value.tolist()
+                if not isinstance(metric_value, list):
+                    metric_value = [metric_value]
+                # Store the results
+                res_ids = res_ids + [run_id] * len(metric_value)
+                res_cats = res_cats + [category] * len(metric_value)
+                res_values = res_values + metric_value
+
+        # Assemble the results in a dataframe
+        df = pd.DataFrame({"id": res_ids,
+                           "model": [run_names[run_id] for run_id in res_ids],
+                           "category": res_cats,
+                           metric_name: res_values})
+        # Plot the results
+        sns.pointplot(data=df, x="category", y=metric_name, hue="model",
+                      errorbar=('ci', 95),
+                      dodge= 0.2 if df["model"].nunique() > 1 else False,
+                      linewidth=1.5, markersize=5,
+                      err_kws={"linewidth": 1.5, "markersize": 5},
+                      ax=ax,
+                      palette=[colors[run_id] for run_id in df["id"].unique()],
+                      marker=[markers[run_id] for run_id in df["id"].unique()])
         ax.set_title(f"{task_name} - {metric_name}")
-        ax.set_xlabel("Maximum SSHS category over $t+6h,t+12h,t+18h,t+24h$")
-        ax.set_ylabel(metric_name)
-        ax.legend()
+        ax.set_ylabel(f"{metric_name} - 95% CI")
+        ax.set_xlabel("Maximum SSHS category over t+6h,12h,18h,24h")
         # Save the figure
         fig.savefig(os.path.join(
-            save_folder, f"{task_name}-{metric_name}-sshs.png"))
-        # Log the figure to W&B
-        current_run.log({f"{task_name}-{metric_name}-sshs": wandb.Image(fig)})
-        plt.close(fig)
+            save_folder, f"{task_name}-{metric_name}-categories.png"))
+        current_run.log({f"{task_name}-{metric_name}-categories": wandb.Image(fig)})
 
     # Plot the number of samples per SSHS category
     # (which is the same for all models)
     fig, ax = plt.subplots(1, 1)
-    # Retrieve the targets
-    task_targets = targets[task_name]
-    # Bucketize the targets according to the SSHS category
-    target_sshs = sshs_category(task_targets)
-    # Compute the maximum SSHS category over all time steps
-    target_sshs, _ = target_sshs.max(dim=1)
-    # Make the max category a tensor of positive integers for bincount
-    target_sshs = (target_sshs.to(torch.int) + 1)
-    counts = target_sshs.to(torch.int).bincount(minlength=7)
-    # Plot the results
+    # Note: bincount expects a tensor of positive integers.
+    counts = (target_sshs.to(torch.int) + 1).bincount(minlength=7).tolist()
     ax.bar(range(-1, 6), counts)
-    # Write above the bars the number of samples
+    # Write the counts on top of the bars
     for i, count in enumerate(counts):
-        ax.text(i-1, count, str(count.item()), ha='center', va='bottom')
+        ax.text(i - 1, count, str(count), ha="center", va="bottom")
     ax.set_title("Number of samples per SSHS category")
     ax.set_xlabel("Maximum SSHS category over t+6h,12h,18h,24h")
     ax.set_ylabel("Number of samples")
