@@ -25,6 +25,8 @@ def make_predictions(run_ids, current_run):
     Returns
     -------
     configs: Mapping run_name -> config
+    tasks: Mapping run_name -> tasks dict.
+        A task dict is a mapping task_name -> task_config
     predictions : Mapping run_name -> predictions on the validation set.
         The keys are the names of the runs, and the values are mappings
         task -> predictions. The predictions are returned as the list of all batches
