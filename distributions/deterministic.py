@@ -3,6 +3,7 @@ Implements the DeterministicDistribution class, which is useful to integrate a d
 model into the probabilistic pipeline.
 """
 import torch
+from utils.utils import add_batch_dim
 
 
 def mse(y_pred, y_true, reduce_mean=True):
@@ -78,6 +79,33 @@ class DeterministicDistribution:
         Returns the hyperparameters of the distribution.
         """
         return {}
+
+    def pdf(self, pred, x):
+        """
+        Computes the probability density function of the distribution.
+
+        Parameters
+        ----------
+        pred: torch.Tensor of shape (N, T, 1) or (T, 1)
+            Predictes values for each sample and time step.
+        x : torch.Tensor of shape (N, T) or (T,)
+            The values at which to compute the probability density function.
+
+        Returns
+        -------
+        pdf : torch.Tensor of shape (N, T) or (T,)
+            The probability density function of the distribution.
+        """
+        # y -> (N, T), y_pred -> (N, T, 1)
+        x, pred = add_batch_dim(x, pred)
+        pred = pred.squeeze(-1)  # (N, T)
+        # The real pdf would be zero everywhere.
+        # We'll simulate a Dirac delta function, which is 0 everywhere except at the
+        # predicted value. We'll indicate a value of 1 in a small neighborhood around the
+        # predicted value.
+        res = torch.zeros_like(x)
+        res[torch.abs(x - pred)/pred <= 2e-2] = 1
+        return res
 
     def cdf(self, y_pred, y):
         """

@@ -113,3 +113,29 @@ def update_dict(d, u):
         else:
             d[k] = v
     return d
+
+
+def add_batch_dim(x, predictions):
+    """
+    Adds a batch dimension to an input x and to the predictions.
+
+    Parameters
+    ----------
+    x : torch.Tensor of shape (T,) or (N, T)
+        The input tensor.
+    predictions : torch.Tensor of shape (T, C) or (N, T, C)
+        The predictions tensor.
+
+    Returns
+    -------
+    x : torch.Tensor of shape (1, T) or (N, T)
+        The input tensor with a batch dimension.
+    predictions : torch.Tensor of shape (1, T, C) or (N, T, C)
+        The predictions tensor with a batch dimension.
+        If predictions was of shape (T, C), it is replicated N times.
+    """
+    if x.ndim == 1:
+        x = x.unsqueeze(0)
+    if predictions.ndim == 2:
+        predictions = predictions.unsqueeze(0).repeat(x.shape[0], 1, 1)
+    return x, predictions

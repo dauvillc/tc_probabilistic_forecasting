@@ -3,6 +3,7 @@ Implements the NormalDistribution class, which can be used as output distributio
 """
 import torch
 from torch.distributions import Normal
+from utils.utils import add_batch_dim
 
 
 def normal_crps(mu, sigma, y):
@@ -161,6 +162,28 @@ class NormalDistribution:
         # Standard deviation of the distribution:
         predicted_params[:, :, 1] = predicted_params[:, :, 1] * stds
         return predicted_params
+
+    def pdf(self, predicted_params, x):
+        """
+        Computes the probability density function of the distribution.
+
+        Parameters
+        ----------
+        pred: torch.Tensor of shape (N, T, 2) or (T, 2)
+            The predicted parameters of the normal distribution for each sample and time step.
+        x : torch.Tensor of shape (N, T) or (T,)
+            The values at which to compute the probability density function.
+
+        Returns
+        -------
+        pdf : torch.Tensor of shape (N, T) or (T,)
+            The probability density function of the distribution.
+        """
+        # y -> (N, T), y_pred -> (N, T, 1)
+        x, predicted_params = add_batch_dim(x, predicted_params)
+        mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
+        normal_dist = Normal(mu, sigma)
+        return normal_dist.log_prob(x).exp()
 
     def hyperparameters(self):
         return {}
