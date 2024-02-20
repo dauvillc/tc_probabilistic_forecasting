@@ -23,8 +23,8 @@ class CompositeQuantileLoss(nn.Module):
         # The term (y_true - y_pred) will have shape (N, T, Q).
         self.probas = self.probas.unsqueeze(0)  # (1, Q)
 
-    def __call__(self, y_pred, y_true, reduce_mean=True): 
-        # Transfer the probas to the device of y_pred 
+    def __call__(self, y_pred, y_true, reduce_mean=True):
+        # Transfer the probas to the device of y_pred
         probas = self.probas.to(y_pred.device)
         # y_pred has shape (N, T, Q), while y_true has shape (N, T)
         y_true = y_true.unsqueeze(2)  # (N, T, 1)
@@ -37,101 +37,6 @@ class CompositeQuantileLoss(nn.Module):
         if reduce_mean:
             loss = loss.mean()
         return loss
-
-class Quantiles_eCDF:
-    """
-    Given a set of predicted quantiles, computes the empirical CDF
-    at any point y.
-
-    Parameters
-    ----------
-    quantiles: torch.Tensor of shape (Q,)
-        The quantiles that define the empirical CDF, between 0 and 1.
-    min_val: float
-        Minimum value of the empirical CDF (beginning of the support).
-    max_val: float
-        Maximum value of the empirical CDF (end of the support).
-    """
-    def __init__(self, quantiles, min_val, max_val):
-        self.min_val = min_val
-        self.max_val = max_val
-        self.quantiles = quantiles
-        # Add 0 and 1 to the quantiles for generality
-        self.quantiles = torch.cat((torch.tensor([0]), self.quantiles, torch.tensor([1])))
-
-    def __call__(self, predicted_quantiles, y):
-        """
-        Computes the empirical CDF from the predicted quantiles,
-        and then evaluates it at y.
-
-        Parameters
-        ----------
-        predicted_quantiles: torch.Tensor of shape (N, Q)
-            where N is the number of samples and Q is the number of quantiles.
-            The predicted quantiles.
-        y: torch.Tensor of shape (N,)
-            The values at which the empirical CDF is evaluated.
-
-        Returns
-        -------
-        The empirical CDF at y, as a torch.Tensor.
-        """
-        # Add the maximum value to the predicted quantiles for generality
-        predicted_quantiles = torch.cat((predicted_quantiles,
-                                         torch.full_like(predicted_quantiles[:, :1], self.max_val)), dim=1)
-        # Find the index of the predicted quantile that is just below y
-        # (or equal to y)
-        index = torch.searchsorted(self.quantiles, y, right=False) - 1
-        # Compute the empirical CDF at y as the corresponding quantile
-        return predicted_quantiles[:, index]
-
-
-
-class Quantiles_inverse_eCDF:
-    """
-    Given a set of predicted quantiles, computes the inverse of the
-    empirical CDF at any point u.
-
-    Parameters
-    ----------
-    quantiles: torch Tensor of shape (Q,)
-        The quantiles that define the empirical CDF, between 0 and 1.
-    min_val: float
-        Minimum value of the empirical CDF (beginning of the support).
-    max_val: float
-        Maximum value of the empirical CDF (end of the support).
-    """
-    def __init__(self, quantiles, min_val, max_val):
-        self.min_val = min_val
-        self.max_val = max_val
-        self.quantiles = quantiles
-        # Add 0 and 1 to the quantiles for generality
-        self.quantiles = torch.cat((torch.tensor([0]), self.quantiles, torch.tensor([1])))
-
-    def __call__(self, predicted_quantiles, u):
-        """
-        Computes the inverse of the empirical CDF from the predicted quantiles,
-        and then evaluates it at u.
-
-        Parameters
-        ----------
-        predicted_quantiles: torch.Tensor of shape (N, Q)
-            where N is the number of samples and Q is the number of quantiles.
-            The predicted quantiles.
-        u: float 
-            The probability at which the inverse empirical CDF is computed.
-
-        Returns
-        -------
-        The inverse empirical CDF at u, as a torch.Tensor.
-        """
-        # Add the minimum value to the predicted quantiles for generality
-        predicted_quantiles = torch.cat((torch.full_like(predicted_quantiles[:, :1], self.min_val),
-                                            predicted_quantiles), dim=1)
-        # Find the index of the quantile that is just below u 
-        index = torch.searchsorted(self.quantiles, u, right=True) - 1
-        # Compute the inverse empirical CDF at u as the corresponding quantile
-        return predicted_quantiles[:, index]
 
 
 class QuantilesCRPS:
@@ -206,7 +111,7 @@ class QuantilesCRPS:
         # * The observation is outside lower than the lowest quantile
         # * The observation is within the predicted distribution
         # * The observation is outside higher than the highest quantile
-        
+
         # We'll first treat the case where the observation is within the predicted quantiles
         # The following is only valid when idx == 0 or idx == n_quantiles (non-extreme indexes)
         nem = (idx > 0) & (idx < n_quantiles)  # Which sample have y within the prediction
