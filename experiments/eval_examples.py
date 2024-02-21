@@ -23,6 +23,8 @@ if __name__ == "__main__":
                         help="The ids of the experiment to evaluate.")
     parser.add_argument("-n", "--n_examples", type=int, default=5,
                         help="The number of examples to show for each run.")
+    parser.add_argument("--min_cat", type=int, default=-1,
+                        help="The minimum SSHS category from which to draw examples.")
     args = parser.parse_args()
 
     # Initialize W&B
@@ -58,8 +60,12 @@ if __name__ == "__main__":
     # Number of samples and predicted time steps
     N, T = targets[all_tasks[0]].shape
 
-    # Draw a set of random examples
-    idxs = torch.randperm(N)[:args.n_examples]
+    # Isolate the examples that are at least of the required SSHS category
+    sample_intensities = targets["vmax"].max(dim=1).values
+    cat_mask = sshs_category(sample_intensities) >= args.min_cat
+    cat_idxs = torch.where(cat_mask)[0]
+    # Randomly select a subset of examples
+    idxs = cat_idxs[torch.randperm(cat_idxs.shape[0])[:args.n_examples]]
 
     # For each task, show the predictions of each run.
     # We'll make one figure for each task.
@@ -81,12 +87,11 @@ if __name__ == "__main__":
                 # associated with the model and the task
                 pdf_fn = all_runs_tasks[run_id][task]['distrib_obj'].pdf
                 # Plot the predicted pdf
-                pdf_vals = pdf_fn(all_runs_predictions[run_id][task][i], x)
+                pdf_vals = pdf_fn(all_runs_predictions[run_id][task][idx], x)
                 for t in range(T):
-                    ax = axs[i, t]
-                    ax.plot(x[:, t], pdf_vals[:, t], label=run_names[run_id],
-                            marker=markers[run_id], color=colors[run_id],
-                            markevery=10)
+                    axs[i, t].plot(x[:, t], pdf_vals[:, t], label=run_names[run_id],
+                                   marker=markers[run_id], color=colors[run_id],
+                                   markevery=10)
             # For each time step, plot the target as a vertical line
             for t in range(T):
                 axs[i, t].axvline(targets[task][idx, t].item(), color="black", linestyle="--",
