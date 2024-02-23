@@ -104,9 +104,10 @@ def sshs_category(wind_speed):
 
 def update_dict(d, u):
     """
-    Updates a dictionary recursively.
+    Updates a dictionary recursively, not in-place.
     Taken from https://stackoverflow.com/questions/3232943/update-value-of-a-nested-dictionary-of-varying-depth
     """
+    d = d.copy()
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
             d[k] = update_dict(d.get(k, {}), v)

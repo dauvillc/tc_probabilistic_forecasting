@@ -70,8 +70,8 @@ def make_predictions(run_ids, current_run):
         # Retrieve the config from the run
         run_cfg = run.config
         # Update the general config with that of the run
-        cfg = update_dict(cfg, run_cfg)
-        run_configs[run_id] = cfg
+        run_cfg = update_dict(cfg, run_cfg)
+        run_configs[run_id] = run_cfg
         # ===== TASKS DEFINITION ==== #
         # Create the tasks
         tasks = create_tasks(cfg)
