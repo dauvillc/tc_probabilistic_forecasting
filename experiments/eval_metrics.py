@@ -28,6 +28,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--ids", required=True, nargs='+',
                         help="The ids of the experiment to evaluate.")
+    parser.add_argument("-p", "--param", type=str, default=None,
+                        help="Name of a parameter that differs between the runs.\
+                                If provided, the names of the runs will be displayed\
+                                as the value of this parameter.\
+                                Format: 'section.parameter', e.g.\
+                                'training_settings.initial_lr'.")
+    parser.add_argument("--param_notation", type=str, default=None,
+                        help="Notation to use for the main parameter")
     args = parser.parse_args()
 
     # Initialize W&B
@@ -39,9 +47,17 @@ if __name__ == "__main__":
     # Make predictions using the models from the runs
     all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
         args.ids, current_run)
-    # Retrieve the run name for each run id
-    run_names = {run_id: all_runs_configs[run_id]
-                 ['experiment']['name'] for run_id in args.ids}
+    # If a parameter was provided, use it to display the run names
+    if args.param is not None:
+        section, param = args.param.split(".")
+        param_notation = args.param_notation if args.param_notation is not None else param
+        # Retrieve the value of the parameter for each run
+        run_names = {run_id: f"{param_notation}={all_runs_configs[run_id][section][param]}"
+                        for run_id in args.ids}
+    else:
+        # Retrieve the run name for each run id
+        run_names = {run_id: all_runs_configs[run_id]
+                     ['experiment']['name'] for run_id in args.ids}
 
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
