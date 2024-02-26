@@ -21,10 +21,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--ids", required=True, nargs='+',
                         help="The ids of the experiment to evaluate.")
-    parser.add_argument("-n", "--n_examples", type=int, default=5,
+    parser.add_argument("-k", "--k_examples", type=int, default=5,
                         help="The number of examples to show for each run.")
     parser.add_argument("--min_cat", type=int, default=-1,
                         help="The minimum SSHS category from which to draw examples.")
+    parser.add_argument("-n", "--name", type=str, default=None, required=True,
+                        help="Name of the evaluation run.")
     args = parser.parse_args()
 
     # Initialize W&B

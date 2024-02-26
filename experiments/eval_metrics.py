@@ -36,6 +36,8 @@ if __name__ == "__main__":
                                 'training_settings.initial_lr'.")
     parser.add_argument("--param_notation", type=str, default=None,
                         help="Notation to use for the main parameter")
+    parser.add_argument("-n", "--name", type=str, default=None, required=True,
+                        help="Name of the evaluation run.")
     args = parser.parse_args()
 
     # Initialize W&B
