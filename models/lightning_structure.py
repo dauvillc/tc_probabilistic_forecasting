@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from models.encoder import Encoder3d
 from models.linear import CommonLinearModule, PredictionHead, MultivariatePredictionHead
 from loss_functions.weighted_loss import WeightedLoss
+from loss_functions.tilted_loss import TiltedLoss
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -58,7 +59,10 @@ class StormPredictionModel(pl.LightningModule):
         self.num_input_variables = num_input_variables
         self.use_weighted_loss = ('use_weighted_loss' in self.training_cfg
                                   and self.training_cfg['use_weighted_loss'])
+        self.use_tilted_loss = ('loss_tilting' in self.training_cfg
+                                 and self.training_cfg['loss_tilting'] not in [None, 0])
         future_steps = cfg['experiment']['future_steps']
+
         # Create the encoder
         self.encoder = Encoder3d(input_datacube_shape,
                                  self.model_cfg['base_block'],
@@ -87,6 +91,9 @@ class StormPredictionModel(pl.LightningModule):
             self.weighted_loss = WeightedLoss(
                 train_dataset, test_goodness_of_fit=True,
                 plot_weights="figures/weighted_loss.png")
+        # Create the TiltedLoss object if needed
+        if self.use_tilted_loss:
+            self.tilted_loss = TiltedLoss(self.training_cfg['loss_tilting'])
 
     def compute_losses(self, batch, train_or_val='train'):
         """
@@ -95,9 +102,9 @@ class StormPredictionModel(pl.LightningModule):
         """
         past_variables, past_datacubes, future_variables, future_datacubes = batch
         predictions = self.forward(past_variables, past_datacubes)
-        # If using a weighted loss, the loss function should return one value per sample
+        # If using a weighted / tilted loss, the loss function should return one value per sample
         # and not the mean over the batch
-        reduce_mean = not self.use_weighted_loss
+        reduce_mean = not (self.use_weighted_loss or self.use_tilted_loss)
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
@@ -107,6 +114,10 @@ class StormPredictionModel(pl.LightningModule):
             if self.use_weighted_loss:
                 losses[task] = self.weighted_loss(
                     losses[task], future_variables['vmax'])
+            # Same for the tilted loss
+            if self.use_tilted_loss:
+                losses[task] = self.tilted_loss(losses[task])
+            # Log the loss
             self.log(f"{train_or_val}_loss_{task}",
                      losses[task], on_step=False, on_epoch=True)
         # Compute the total loss
