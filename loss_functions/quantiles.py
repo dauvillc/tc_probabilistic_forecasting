@@ -125,7 +125,7 @@ class QuantilesCRPS:
         mask = ((k0 > 0) & (k0 < Q))
         if mask.sum() > 0:  # If there are no samples in this case, skip it.
             k0_m, y_m  = k0[mask] - 1, y[mask]
-            a_m, t_m = a[mask, k0_m], t.unsqueeze(0)[mask, k0_m]
+            a_m, t_m = a[mask, k0_m], t[k0_m]
             pql_m, pqr_m = pql[mask, k0_m], pqr[mask, k0_m]
             # Pre-computation
             ys = y_m ** 2  # y^2
@@ -137,7 +137,7 @@ class QuantilesCRPS:
             dprys = pqr_m ** 2 - y_m ** 2  # pq_{k0 + 1}^2 - y^2
             dpryc = pqr_m ** 3 / 3 - yc  # pq_{k0 + 1}^3 / 3 - y^3 / 3
             ty = t_m + a_m * (y_m - pql_m) - 1  # F(y) - 1 for Y within a bin
-            where_mask = torch.where(mask)[0]
+            where_mask = torch.where(mask)[0]  # integral[mask] would assign to a copy
             # Integral from q_{k0} to y
             integral[where_mask, k0_m] = t_m ** 2 * dypl\
                     + t_m * a_m * (dypls - 2 * pql_m * dypl)\
@@ -153,13 +153,15 @@ class QuantilesCRPS:
         if mask.sum() > 0:
             # In this case, we stop considering a linear interpolation.
             # We consider that F(x) = tau_0 from y to q_0
-            integral[mask] += (1 - tau[0]) ** 2 * (pql[mask][:, 0] - y[mask])
+            # integral[mask] += (1 - tau[0]) ** 2 * (pql[mask][:, 0] - y[mask])
+            integral[mask] += pql[mask][:, 0] - y[mask]
         # Case 3. y >= q_{Q - 1}
         mask = (k0 == Q)
         if mask.sum() > 0:
             # In this case, we stop considering a linear interpolation.
             # We consider that F(x) = tau_{Q - 1} from y to q_{Q - 1}
-            integral[mask] += tau[-1] ** 2 * (y[mask] - pqr[mask][:, -1])
+            # integral[mask] += tau[-1] ** 2 * (y[mask] - pqr[mask][:, -1])
+            integral[mask] += y[mask] - pqr[mask][:, -1]
         res = integral.view(N, T).sum(dim=1)
         if reduce_mean:
             res = res.mean()
