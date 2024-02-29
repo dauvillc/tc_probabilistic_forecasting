@@ -1,6 +1,7 @@
 """
 Implements a single 3D CNN for various tasks.
 """
+
 import torch
 import torch.nn as nn
 from models.cbam import CBAM3D
@@ -38,11 +39,16 @@ class BasicCNNBlock3D(nn.Module):
         Size of the kernel over the H and W dimensions.
         The kernel size over the D dimension is always 1 (different depth layers are independent).
     """
+
     def __init__(self, in_channels, out_channels, kernel_size):
         super().__init__()
         # Convolution
-        self.conv = nn.Conv3d(in_channels, out_channels,
-                              kernel_size=(1, kernel_size, kernel_size), padding='same')
+        self.conv = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=(1, kernel_size, kernel_size),
+            padding="same",
+        )
         self.batch_norm = nn.BatchNorm3d(out_channels)
 
     def forward(self, x):
@@ -77,24 +83,33 @@ class DownsamplingBlock3D(nn.Module):
     kernel_size : tuple of ints
         Size of the kernel, as (D, H, W).
     """
+
     def __init__(self, in_channels, out_channels, base_block, kernel_size):
         super().__init__()
         self.kernel_size = kernel_size
         # Entry convolution. Different depth layers are treated independently.
-        self.entry_conv = nn.Conv3d(in_channels, out_channels,
-                                    kernel_size=(1, kernel_size[1], kernel_size[2]),
-                                    padding='same')
+        self.entry_conv = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=(1, kernel_size[1], kernel_size[2]),
+            padding="same",
+        )
         # Base block
-        if base_block == 'cbam':
+        if base_block == "cbam":
             self.base_block = CBAM3D(out_channels)
-        elif base_block == 'conv':
+        elif base_block == "conv":
             self.base_block = BasicCNNBlock3D(out_channels, out_channels, kernel_size=3)
         else:
-            raise ValueError(f'Unknown base block: {base_block}')
+            raise ValueError(f"Unknown base block: {base_block}")
         # Apply a convolution with a stride of 2 to downsample
         # The stride of 2 is also applied to the Depth dimension
-        self.final_conv = nn.Conv3d(out_channels, out_channels,
-                                    kernel_size=kernel_size, stride=(1, 2, 2), padding=(0, 1, 1))
+        self.final_conv = nn.Conv3d(
+            out_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=(1, 2, 2),
+            padding=(0, 1, 1),
+        )
         self.batch_norm = nn.BatchNorm3d(out_channels)
 
     def forward(self, x):
@@ -133,21 +148,26 @@ class UpsampleConvBlock3D(nn.Module):
     base_block: str
         'conv' or 'cbam', type of base block to use before downsampling.
     """
+
     def __init__(self, in_channels, out_channels, base_block):
         super().__init__()
         # Upsampling
-        self.upsample = nn.Upsample(scale_factor=(1, 2, 2), mode='nearest')
+        self.upsample = nn.Upsample(scale_factor=(1, 2, 2), mode="nearest")
         # Entry convolution
-        self.entry_conv = nn.Conv3d(in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.entry_conv = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1)
+        )
         # Base block
-        if base_block == 'cbam':
+        if base_block == "cbam":
             self.base_block = CBAM3D(in_channels)
-        elif base_block == 'conv':
+        elif base_block == "conv":
             self.base_block = BasicCNNBlock3D(in_channels, in_channels, kernel_size=3)
         else:
-            raise ValueError(f'Unknown base block: {base_block}')
+            raise ValueError(f"Unknown base block: {base_block}")
         # Output convolutions: 1x3x3 followed by 1x1x1
-        self.output_conv1 = nn.Conv3d(in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1))
+        self.output_conv1 = nn.Conv3d(
+            in_channels, in_channels, kernel_size=(1, 3, 3), padding=(0, 1, 1)
+        )
         self.output_conv2 = nn.Conv3d(in_channels, out_channels, kernel_size=(1, 1, 1))
         self.batch_norm = nn.BatchNorm3d(out_channels)
 

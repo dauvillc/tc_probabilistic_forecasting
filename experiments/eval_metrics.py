@@ -6,7 +6,9 @@ metrics.
 For every pair (task, distribution), this script plots the metrics
 for each model, on the same plot.
 """
+
 import sys
+
 sys.path.append("./")
 import os
 import argparse
@@ -26,40 +28,67 @@ if __name__ == "__main__":
 
     # Argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--ids", required=True, nargs='+',
-                        help="The ids of the experiment to evaluate.")
-    parser.add_argument("-p", "--param", type=str, default=None,
-                        help="Name of a parameter that differs between the runs.\
+    parser.add_argument(
+        "-i",
+        "--ids",
+        required=True,
+        nargs="+",
+        help="The ids of the experiment to evaluate.",
+    )
+    parser.add_argument(
+        "-p",
+        "--param",
+        type=str,
+        default=None,
+        help="Name of a parameter that differs between the runs.\
                                 If provided, the names of the runs will be displayed\
                                 as the value of this parameter.\
                                 Format: 'section.parameter', e.g.\
-                                'training_settings.initial_lr'.")
-    parser.add_argument("--param_notation", type=str, default=None,
-                        help="Notation to use for the main parameter")
-    parser.add_argument("-n", "--name", type=str, default=None, required=True,
-                        help="Name of the evaluation run.")
+                                'training_settings.initial_lr'.",
+    )
+    parser.add_argument(
+        "--param_notation",
+        type=str,
+        default=None,
+        help="Notation to use for the main parameter",
+    )
+    parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        default=None,
+        required=True,
+        help="Name of the evaluation run.",
+    )
     args = parser.parse_args()
 
     # Initialize W&B
     current_run_name = "metrics-" + "-".join(args.ids)
-    current_run = wandb.init(project="tc_prediction",
-                             name=current_run_name,
-                             job_type="eval")
+    current_run = wandb.init(
+        project="tc_prediction", name=current_run_name, job_type="eval"
+    )
 
     # Make predictions using the models from the runs
     all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
-        args.ids, current_run)
+        args.ids, current_run
+    )
     # If a parameter was provided, use it to display the run names
     if args.param is not None:
         section, param = args.param.split(".")
-        param_notation = args.param_notation if args.param_notation is not None else param
+        param_notation = (
+            args.param_notation if args.param_notation is not None else param
+        )
         # Retrieve the value of the parameter for each run
-        run_names = {run_id: f"{param_notation}={all_runs_configs[run_id][section][param]}"
-                        for run_id in args.ids}
+        run_names = {
+            run_id: f"{param_notation}={all_runs_configs[run_id][section][param]}"
+            for run_id in args.ids
+        }
     else:
         # Retrieve the run name for each run id
-        run_names = {run_id: all_runs_configs[run_id]
-                     ['experiment']['name'] for run_id in args.ids}
+        run_names = {
+            run_id: all_runs_configs[run_id]["experiment"]["name"]
+            for run_id in args.ids
+        }
 
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
@@ -69,7 +98,7 @@ if __name__ == "__main__":
     # by a the same marker and color across all plots.
     markers = matplotlib_markers(len(args.ids))
     markers = {run_id: marker for run_id, marker in zip(args.ids, markers)}
-    cmap = plt.get_cmap('tab10', len(args.ids))
+    cmap = plt.get_cmap("tab10", len(args.ids))
     colors = {run_id: cmap(k) for k, run_id in enumerate(args.ids)}
 
     # ======== GENERAL METRICS ======== #
@@ -96,7 +125,7 @@ if __name__ == "__main__":
             run_tasks = all_runs_tasks[run_id]
             if task_name in run_tasks:
                 # Retrieve the metrics for the task
-                metrics = run_tasks[task_name]['distrib_obj'].metrics
+                metrics = run_tasks[task_name]["distrib_obj"].metrics
                 # metrics is a mapping metric_name --> function
                 for metric_name in metrics:
                     # Store the run id in the map
@@ -112,25 +141,31 @@ if __name__ == "__main__":
             predictions = all_runs_predictions[run_id][task_name]
             task_targets = targets[task_name]
             # Compute the metric without reducing the result to its mean
-            metric_fn = all_runs_tasks[run_id][task_name]['distrib_obj'].metrics[metric_name]
-            metric_value = metric_fn(
-                predictions, task_targets, reduce_mean=False)
+            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[
+                metric_name
+            ]
+            metric_value = metric_fn(predictions, task_targets, reduce_mean=False)
             # Store the results
             results[run_id] = metric_value
         # Make a boxplot of the results, with the run names as xticks
-        ax.boxplot([results[run_id] for run_id in run_ids],
-                   labels=[run_names[run_id] for run_id in run_ids],
-                   showmeans=True,
-                   meanline=True,
-                   meanprops={'color': 'red'})
+        ax.boxplot(
+            [results[run_id] for run_id in run_ids],
+            labels=[run_names[run_id] for run_id in run_ids],
+            showmeans=True,
+            meanline=True,
+            meanprops={"color": "red"},
+        )
         ax.set_title(f"{task_name} - {metric_name}")
         ax.set_ylabel(metric_name)
         # Add a legend to indicate that the mean is in red and the median in orange
-        ax.legend(handles=[plt.Line2D([0], [0], color='red', lw=1, ls='--', label='Mean'),
-                           plt.Line2D([0], [0], color='orange', lw=1, label='Median')])
+        ax.legend(
+            handles=[
+                plt.Line2D([0], [0], color="red", lw=1, ls="--", label="Mean"),
+                plt.Line2D([0], [0], color="orange", lw=1, label="Median"),
+            ]
+        )
         # Save the figure
-        fig.savefig(os.path.join(
-            save_folder, f"{task_name}-{metric_name}.png"))
+        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}.png"))
         # Log the figure to W&B
         current_run.log({f"{task_name}-{metric_name}": wandb.Image(fig)})
         plt.close(fig)
@@ -156,7 +191,9 @@ if __name__ == "__main__":
             predictions = all_runs_predictions[run_id][task_name]
             task_targets = targets[task_name]
             # Retrieve the metric function
-            metric_fn = all_runs_tasks[run_id][task_name]['distrib_obj'].metrics[metric_name]
+            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[
+                metric_name
+            ]
             for category in range(-1, 6):
                 mask = target_sshs == category
                 cat_targets = task_targets[mask]
@@ -166,8 +203,7 @@ if __name__ == "__main__":
                 else:
                     cat_preds = predictions[mask]
                 # Compute the metric for the category
-                metric_value = metric_fn(
-                    cat_preds, cat_targets, reduce_mean=False)
+                metric_value = metric_fn(cat_preds, cat_targets, reduce_mean=False)
                 # Convert the metric values from tensors to lists
                 # If the metric is a scalar tensor, convert it to a list
                 metric_value = metric_value.tolist()
@@ -179,25 +215,36 @@ if __name__ == "__main__":
                 res_values = res_values + metric_value
 
         # Assemble the results in a dataframe
-        df = pd.DataFrame({"id": res_ids,
-                           "model": [run_names[run_id] for run_id in res_ids],
-                           "category": res_cats,
-                           metric_name: res_values})
+        df = pd.DataFrame(
+            {
+                "id": res_ids,
+                "model": [run_names[run_id] for run_id in res_ids],
+                "category": res_cats,
+                metric_name: res_values,
+            }
+        )
         # Plot the results
-        sns.pointplot(data=df, x="category", y=metric_name, hue="model",
-                      errorbar=('ci', 95),
-                      dodge= 0.2 if df["model"].nunique() > 1 else False,
-                      linewidth=1.5, markersize=5,
-                      err_kws={"linewidth": 1.5, "markersize": 5},
-                      ax=ax,
-                      palette=[colors[run_id] for run_id in df["id"].unique()],
-                      marker=[markers[run_id] for run_id in df["id"].unique()])
+        sns.pointplot(
+            data=df,
+            x="category",
+            y=metric_name,
+            hue="model",
+            errorbar=("ci", 95),
+            dodge=0.2 if df["model"].nunique() > 1 else False,
+            linewidth=1.5,
+            markersize=5,
+            err_kws={"linewidth": 1.5, "markersize": 5},
+            ax=ax,
+            palette=[colors[run_id] for run_id in df["id"].unique()],
+            marker=[markers[run_id] for run_id in df["id"].unique()],
+        )
         ax.set_title(f"{task_name} - {metric_name}")
         ax.set_ylabel(f"{metric_name} - 95% CI")
         ax.set_xlabel("Maximum SSHS category over t+6h,12h,18h,24h")
         # Save the figure
-        fig.savefig(os.path.join(
-            save_folder, f"{task_name}-{metric_name}-categories.png"))
+        fig.savefig(
+            os.path.join(save_folder, f"{task_name}-{metric_name}-categories.png")
+        )
         current_run.log({f"{task_name}-{metric_name}-categories": wandb.Image(fig)})
 
     # Plot the number of samples per SSHS category
