@@ -17,6 +17,7 @@ class CompositeQuantileLoss(nn.Module):
     probas: tensor of shape (Q,)
         The probabilities associated with the quantiles to estimate.
     """
+
     def __init__(self, probas):
         super().__init__()
         self.probas = probas
@@ -24,6 +25,16 @@ class CompositeQuantileLoss(nn.Module):
         self.probas = self.probas.unsqueeze(0)  # (1, Q)
 
     def __call__(self, y_pred, y_true, reduce_mean=True):
+        """
+        Parameters
+        ----------
+        y_pred: torch.Tensor, of shape (N, T, Q)
+            The predicted quantiles.
+        y_true: torch.Tensor, of shape (N, T)
+            The true values.
+        reduce_mean: bool, optional
+            Whether to reduce the loss over the batch dimension.
+        """
         # Transfer the probas to the device of y_pred
         probas = self.probas.to(y_pred.device)
         # y_pred has shape (N, T, Q), while y_true has shape (N, T)
@@ -48,6 +59,7 @@ class QuantilesCRPS:
     probas: torch.Tensor
         The probabilities that define the predicted quantiles, between 0 and 1.
     """
+
     def __init__(self, probas):
         self.probas = probas
         # Compute the differences between successive probabilities (delta tau)
@@ -72,68 +84,83 @@ class QuantilesCRPS:
         -------
         The average CRPS over all samples and time steps, as a float.
         """
+        N, T, Q = predicted_quantiles.shape
         # Move dt to the device of predicted_quantiles
         dt = self.dt.to(predicted_quantiles.device)
         # Move the probas to the device of y
         tau = self.probas.to(y.device)
         # Flatten the predicted quantiles and the true values to get rid of the time dimension
-        pq = predicted_quantiles.view(-1, predicted_quantiles.shape[2])  # (N * T, Q)
-        y = y.view(-1)  # (N * T,)
-        # Compute the CRPS, considering a linear interpolation between the predicted quantiles
-        # First, we need to find for each sample in which bin the true value falls
-        # (i.e. which two quantiles it is between)
-        # For every n we want i such that pq[n, i-1] <= y[n, 0] < pq[n, i]
-        idx = torch.searchsorted(pq, y.unsqueeze(1), side="right").squeeze(1)
-        # Compute the differences between the predicted quantiles (delta pq)
-        dpq = pq[:, 1:] - pq[:, :-1]
-        res = torch.zeros(y.shape[0], device=y.device)
-        # Compute the integral of F**2 before the true value, considering trapezoidal integration
-        ts = tau ** 2
-        it = (1 - tau)
-        its = it ** 2
-        dts = dt ** 2
-        n_quantiles = pq.shape[1]
-        # First, we'll compute the integral over every bin strictly before and after the true value
-        for i in range(n_quantiles - 1):
-            # Compute the integral of F**2 from pq[n, i] to pq[n, i+1]
-            term = (ts[i] + tau[i] * dt[i] + dts[i] / 3) * dpq[:, i]
-            # This value is only valid the quantile just below y is at least i+1
-            term[idx - 1 < i + 1] = 0
-            res += term
-        # After the true value
-        for i in range(n_quantiles - 1):
-            # Compute the integral of F**2 from pq[n, i] to pq[n, i+1]
-            term = (its[i] + it[i] * dt[i] + dts[i] / 3) * dpq[:, i]
-            # This value is only valid when the quantile just above y is at most i
-            term[idx > i] = 0
-            res += term
-        # Now, there are three cases:
-        # * The observation is outside lower than the lowest quantile
-        # * The observation is within the predicted distribution
-        # * The observation is outside higher than the highest quantile
-
-        # We'll first treat the case where the observation is within the predicted quantiles
-        # The following is only valid when idx == 0 or idx == n_quantiles (non-extreme indexes)
-        nem = (idx > 0) & (idx < n_quantiles)  # Which sample have y within the prediction
-        nei = idx[nem]  # For those samples, which quantile is just above y
-        # Linearly interpolate the value of F at y[n, 0].
-        # Note: nei is the index of the quantile just above y
-        tau_y = (tau[nei] - tau[nei - 1]) / dpq[nem, nei - 1] * (y[nem] - pq[nem, nei - 1]) + tau[nei - 1]
-        dt_y = tau_y - tau[nei - 1]
-        # Compute the integral between pq[n, nei-1] and y[n, 0]
-        term = (ts[nei - 1] + tau[nei - 1] * dt_y + dt_y ** 2 / 3) * (y[nem] - pq[nem, nei - 1])
-        # Compute the integral between y[n, 0] and pq[n, nei]
-        dt_y = tau[nei] - tau_y
-        term += ((1 - tau_y) ** 2 + (1 - tau_y) * dt_y + dt_y ** 2 / 3) * (pq[nem, nei] - y[nem])
-        res[nem] += term
-
-        # Now, when the observation is outside the lowest quantile
-        zero_idx = idx == 0
-        res[zero_idx] += pq[zero_idx, 0] - y[zero_idx]
-        # When the observation is outside the highest quantile
-        max_idx = idx == n_quantiles
-        res[max_idx] += (1 - tau[-1]) * (y[max_idx] - pq[max_idx, -1])
-
+        # (N * T, Q)
+        pq = predicted_quantiles.view(-1, predicted_quantiles.shape[2])
+        y = y.view(-1, 1)  # (N * T, 1)
+        # Compute the CRPS, considering a linear interpolation between the predicted quantiles.
+        # We'll first compute the integral within each bin of the predicted quantiles.
+        # We'll make some pre-computations:
+        pql, pqr = pq[:, :-1], pq[:, 1:]  # Left and right predicted quantiles (p_{k} and p_{k+1})
+        t = tau[:-1]  # Tau without the last probability
+        dpq = pqr - pql  # Differences between successive predicted quantiles
+        a = dt / dpq  # Slopes of the linear interpolation
+        pqs = pq ** 2  # Squared predicted quantiles
+        pqc = (pqs * pq) / 3  # Cube of the predicted quantiles
+        dpqs = pqs[:, 1:] - pqs[:, :-1]  # Diff between successive squared predicted quantiles
+        dpqc = pqc[:, 1:] - pqc[:, :-1]  # Diff between successive cubed predicted quantiles
+        v = t - (y < pql).float()  # t - 1 if y < pq_k, t if y >= pq_k
+        # Compute the integral within each bin
+        # Note: if y is within a bin, the integral within that bin will have to be
+        # computed differently after.
+        integral = dpq * v ** 2\
+                + v * (a * dpqs - 2 * pql * dt)\
+                + a ** 2 * (dpqc - pql * dpqs + pql ** 2 * dpq)
+        # There are now three cases:
+        # 1. y is between two quantiles q_{k0} <= y < q_{k0 + 1}
+        # 2. y is below the first quantile y < q_{0}
+        # 3. y is above the last quantile y >= q_{Q - 1}
+        # We can now the case for each sample of the batch in a vectorized way,
+        # using searchsorted:
+        # We obtain the index k0 such that pq[n, k0] <= y[n - 1] < pq[n, k0]
+        k0 = torch.searchsorted(pq, y, right=True).squeeze(1)
+        # For the following, we need y to have shape (N * T,)
+        y = y.squeeze(1)
+        # Case 1. y is between two quantiles (i.e. k0 > 0 and k0 < Q)
+        mask = ((k0 > 0) & (k0 < Q))
+        if mask.sum() > 0:  # If there are no samples in this case, skip it.
+            k0_m, y_m  = k0[mask] - 1, y[mask]
+            a_m, t_m = a[mask, k0_m], t.unsqueeze(0)[mask, k0_m]
+            pql_m, pqr_m = pql[mask, k0_m], pqr[mask, k0_m]
+            # Pre-computation
+            ys = y_m ** 2  # y^2
+            yc = (y_m * ys) / 3  # y^3 / 3
+            dypl = y_m - pql_m  # y - pq_{k0}
+            dypls = y_m ** 2 - pql_m ** 2  # y^2 - pq_{k0}^2
+            dyplc = yc - pql_m ** 3 / 3  # (y^3 - pq_{k0}^3)/3
+            dpry = pqr_m - y_m  # pq_{k0 + 1} - y
+            dprys = pqr_m ** 2 - y_m ** 2  # pq_{k0 + 1}^2 - y^2
+            dpryc = pqr_m ** 3 / 3 - yc  # pq_{k0 + 1}^3 / 3 - y^3 / 3
+            ty = t_m + a_m * (y_m - pql_m) - 1  # F(y) - 1 for Y within a bin
+            where_mask = torch.where(mask)[0]
+            # Integral from q_{k0} to y
+            integral[where_mask, k0_m] = t_m ** 2 * dypl\
+                    + t_m * a_m * (dypls - 2 * pql_m * dypl)\
+                    + a_m ** 2 * (dyplc - pql_m * dypls + pql_m ** 2 * dypl)
+            # Integral from y to q_{k0 + 1}
+            integral[where_mask, k0_m] += ty ** 2 * dpry\
+                    + ty * a_m * (dprys - 2 * y_m * dpry)\
+                    + a_m ** 2 * (dpryc - y_m * dprys + y_m ** 2 * dpry)
+        # Sum the integral over the bins
+        integral = integral.sum(dim=1)
+        # Case 2. y < q_{0}
+        mask = (k0 == 0)
+        if mask.sum() > 0:
+            # In this case, we stop considering a linear interpolation.
+            # We consider that F(x) = tau_0 from y to q_0
+            integral[mask] += (1 - tau[0]) ** 2 * (pql[mask][:, 0] - y[mask])
+        # Case 3. y >= q_{Q - 1}
+        mask = (k0 == Q)
+        if mask.sum() > 0:
+            # In this case, we stop considering a linear interpolation.
+            # We consider that F(x) = tau_{Q - 1} from y to q_{Q - 1}
+            integral[mask] += tau[-1] ** 2 * (y[mask] - pqr[mask][:, -1])
+        res = integral.view(N, T).sum(dim=1)
         if reduce_mean:
             res = res.mean()
         return res
