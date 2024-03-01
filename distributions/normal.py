@@ -1,9 +1,11 @@
 """
 Implements the NormalDistribution class, which can be used as output distribution P(y|x).
 """
+
 import torch
 from torch.distributions import Normal
 from utils.utils import add_batch_dim
+from loss_functions.common import CoveredCrps
 
 
 def normal_crps(mu, sigma, y):
@@ -26,9 +28,11 @@ def normal_crps(mu, sigma, y):
     """
     normal_dist = Normal(0, 1)
     std_y = (y - mu) / sigma
-    crps = sigma * (std_y * (2 * normal_dist.cdf(std_y) - 1)
-                    + 2 * torch.exp(normal_dist.log_prob(std_y))
-                    - 1 / torch.sqrt(torch.tensor(torch.pi)))
+    crps = sigma * (
+        std_y * (2 * normal_dist.cdf(std_y) - 1)
+        + 2 * torch.exp(normal_dist.log_prob(std_y))
+        - 1 / torch.sqrt(torch.tensor(torch.pi))
+    )
     return crps
 
 
@@ -51,7 +55,7 @@ def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean=True):
     """
     Computes the coverage of the predicted intervals at the alpha level.
     The coverage is the proportion of true values that fall within the predicted intervals.
-    
+
     Parameters
     ----------
     predicted_params : torch.Tensor of shape (N, T, 2)
@@ -99,30 +103,11 @@ class NormalDistribution:
         # The MAE is the mean absolute error between the predicted mean (which is also the
         # median) and the true value.
         self.metrics = {
-            'MAE': normal_mae,
-            'CRPS': self.loss_function,
-            'Coverage': normal_coverage
+            "MAE": normal_mae,
+            "CRPS": self.loss_function,
+            "Coverage": normal_coverage,
+            "Covered CRPS": CoveredCrps(self.loss_function, normal_coverage, 1.0),
         }
-
-    def inverse_cdf(self, predicted_params, u):
-        """
-        Computes the inverse of the CDF for a normal distribution.
-
-        Parameters
-        ----------
-        predicted_params : torch.Tensor of shape (N, 2)
-            The predicted parameters of the normal distribution for each sample.
-        u : float
-            The probability at which the inverse CDF is computed.
-
-        Returns
-        -------
-        torch.Tensor of shape (N, 1)
-            The inverse CDF for each sample.
-        """
-        mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
-        normal_dist = Normal(mu, sigma)
-        return normal_dist.icdf(torch.tensor(u))
 
     def activation(self, predicted_params):
         """
@@ -221,6 +206,48 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
         normal_dist = Normal(mu, sigma)
         return normal_dist.log_prob(x).exp()
+
+    def cdf(self, predicted_params, x):
+        """
+        Computes the cumulative distribution function of the distribution.
+
+        Parameters
+        ----------
+        pred: torch.Tensor of shape (N, T, 2) or (T, 2)
+            The predicted parameters of the normal distribution for each sample and time step.
+        x : torch.Tensor of shape (N, T) or (T,)
+            The values at which to compute the cumulative distribution function.
+
+        Returns
+        -------
+        cdf : torch.Tensor of shape (N, T) or (T,)
+            The cumulative distribution function of the distribution.
+        """
+        # y -> (N, T), y_pred -> (N, T, 1)
+        x, predicted_params = add_batch_dim(x, predicted_params)
+        mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
+        normal_dist = Normal(mu, sigma)
+        return normal_dist.cdf(x)
+
+    def inverse_cdf(self, predicted_params, u):
+        """
+        Computes the inverse of the CDF for a normal distribution.
+
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, 2)
+            The predicted parameters of the normal distribution for each sample.
+        u : float
+            The probability at which the inverse CDF is computed.
+
+        Returns
+        -------
+        torch.Tensor of shape (N, 1)
+            The inverse CDF for each sample.
+        """
+        mu, sigma = predicted_params[:, 0], predicted_params[:, 1]
+        normal_dist = Normal(mu, sigma)
+        return normal_dist.icdf(torch.tensor(u))
 
     def hyperparameters(self):
         return {}

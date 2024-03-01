@@ -5,6 +5,7 @@ Defines the QuantileCompositeDistribution class.
 import torch
 import torch.nn.functional as F
 from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS, quantiles_coverage
+from loss_functions.common import CoveredCrps
 from utils.utils import add_batch_dim
 
 
@@ -37,8 +38,10 @@ class QuantileCompositeDistribution:
         self.metrics = {}
         # The "MAE" is defined here as the L1 norm between y and the 0.5-quantile
         self.metrics["MAE"] = CompositeQuantileLoss(torch.tensor([0.5]))
-        self.metrics["CRPS"] = QuantilesCRPS(self.probas)
+        crps_fn = QuantilesCRPS(self.probas)
+        self.metrics["CRPS"] = crps_fn
         self.metrics["Coverage"] = quantiles_coverage
+        self.metrics["Covered CRPS"] = CoveredCrps(crps_fn, quantiles_coverage, 1.0)
 
     def activation(self, predicted_params):
         """
@@ -123,9 +126,9 @@ class QuantileCompositeDistribution:
         # where i is such that pq_i-1 <= x < pq_i
         in_mask = (x >= pq[:, :, 0]) & (x < pq[:, :, -1])
         # We'll first compute the pdf as if every x was within the bounds
-        # To do so we need idx to be in [1, K-1]
+        # To do so we need idx to be in [1, K-1] to avoid out of bounds errors
         idx = idx.clamp(1, self.n_parameters - 1)
-        dpq = pq = pq.gather(2, idx) - pq.gather(2, idx - 1)
+        dpq = pq.gather(2, idx) - pq.gather(2, idx - 1)
         dt = self.probas[1:] - self.probas[:-1]
         res = dt[idx - 1] / dpq
         # Now we set the pdf to 0 for the values of x that are outside the bounds
@@ -154,12 +157,21 @@ class QuantileCompositeDistribution:
         pq, x, idx = self._preprocess_input(predicted_params, x)
         N, T = x.shape
         # The cdf is defined as 0 if x < q1;
-        # For q1 <= x < qK, the cdf is tau_i-1 where i is such that pq_i-1 <= x < pq_i
+        # For q1 <= x < qK, the cdf is tau_i-1 + (x - pq_i-1) / (pq_i - pq_i-1)
+        # where i is such that pq_i-1 <= x < pq_i
         # Finally, the cdf is 1 if x >= qK
         res = torch.zeros_like(x)
-        in_mask = x >= pq[:, 0]
-        idx_in = idx[in_mask]
-        res[in_mask] = self.probas[idx_in - 1]
+        # We'll first compute the pdf as if every x was within the bounds
+        # To do so we need idx to be in [1, K-1] to avoid out of bounds errors
+        idx = idx.clamp(1, self.n_parameters - 1)
+        pql = pq.gather(2, idx - 1)  # pq_i-1
+        dpq = pq.gather(2, idx) - pql  # pq_i - pq_i-1
+        dt = self.probas[1:] - self.probas[:-1]
+        slope = dt[idx - 1] / dpq
+        res = self.probas[idx - 1] + slope * (x.unsqueeze(-1) - pql)
+        # Now, set the cdf to 0 or 1 for the values of x that are outside the bounds
+        res[x < pq[:, :, 0]] = 0
+        res[x >= pq[:, :, -1]] = 1
         # Reshape back to the original shape
         res = res.view(N, T)
         # If x is of shape (1, T), remove the batch dimension

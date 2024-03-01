@@ -53,18 +53,14 @@ if __name__ == "__main__":
 
     # Initialize W&B
     current_run_name = "examples-" + "-".join(args.ids)
-    current_run = wandb.init(
-        project="tc_prediction", name=current_run_name, job_type="eval"
-    )
+    current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
 
     # Make predictions using the models from the runs
     all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
         args.ids, current_run
     )
     # Retrieve the run name for each run id
-    run_names = {
-        run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids
-    }
+    run_names = {run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids}
 
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
@@ -91,36 +87,44 @@ if __name__ == "__main__":
     cat_mask = sshs_category(sample_intensities) >= args.min_cat
     cat_idxs = torch.where(cat_mask)[0]
     # Randomly select a subset of examples
-    idxs = cat_idxs[torch.randperm(cat_idxs.shape[0])[: args.n_examples]]
+    idxs = cat_idxs[torch.randperm(cat_idxs.shape[0])[: args.k_examples]]
 
     # For each task, show the predictions of each run.
     # We'll make one figure for each task.
     # Each figure will have one row for each example and one column for each time step.
-    # Each subplot will show the pdf predicted by each run, plus the target.
+    # Each subplot will show the cdf predicted by each run, plus the target.
     for task in all_tasks:
-        fig, axs = plt.subplots(
-            nrows=args.n_examples, ncols=T, figsize=(20, 5 * args.n_examples)
-        )
+        fig, axs = plt.subplots(nrows=args.k_examples, ncols=T, figsize=(20, 5 * args.k_examples))
         fig.suptitle(f"{task}", fontsize=16)
-        # Define for which x values we'll plot the pdfs
+        # Define for which x values we'll plot the cdfs
         # We'll use the min and max of the target values, with some margin
         x_min = targets[task].min().item() * 0.9
         x_max = targets[task].max().item() * 1.1
         x = torch.linspace(x_min, x_max, 100).unsqueeze(1).repeat(1, T)  # (100, T)
+        # For each run, compute the CRPS. We'll add it in the label of the curves.
+        crps = {}
+        for run_id in args.ids:
+            # Compute the CRPS for the current model
+            crps_fn = all_runs_tasks[run_id][task]["distrib_obj"].metrics["CRPS"]
+            crps[run_id] = crps_fn(
+                all_runs_predictions[run_id][task][idxs],
+                targets[task][idxs],
+                reduce_mean=False,
+            )  # (N,)
         # For each example
         for i, idx in enumerate(idxs):
             # Compute the PDF according to each model
             for run_id in args.ids:
-                # Retrieve the pdf function from the distribution object
+                # Retrieve the cdf function from the distribution object
                 # associated with the model and the task
-                pdf_fn = all_runs_tasks[run_id][task]["distrib_obj"].pdf
-                # Plot the predicted pdf
-                pdf_vals = pdf_fn(all_runs_predictions[run_id][task][idx], x)
+                cdf_fn = all_runs_tasks[run_id][task]["distrib_obj"].cdf
+                # Plot the predicted cdf
+                cdf_vals = cdf_fn(all_runs_predictions[run_id][task][idx], x)
                 for t in range(T):
                     axs[i, t].plot(
                         x[:, t],
-                        pdf_vals[:, t],
-                        label=run_names[run_id],
+                        cdf_vals[:, t],
+                        label=run_names[run_id] + f" {crps[run_id][i].item():.2f}",
                         marker=markers[run_id],
                         color=colors[run_id],
                         markevery=10,
@@ -133,8 +137,9 @@ if __name__ == "__main__":
                     linestyle="--",
                     label="target",
                 )
-        # Add a legend to the first subplot
-        axs[0, 0].legend()
+        # Add the legend to each subplot, to show the CRPS
+        for ax in axs.flatten():
+            ax.legend()
         # Save the figure
         plt.savefig(f"{save_folder}/{task}.png")
         current_run.log({"examples": wandb.Image(f"{save_folder}/{task}.png")})
