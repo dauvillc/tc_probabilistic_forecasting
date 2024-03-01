@@ -47,6 +47,42 @@ def normal_mae(predicted_params, y, reduce_mean=True):
         return mae
 
 
+def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean=True):
+    """
+    Computes the coverage of the predicted intervals at the alpha level.
+    The coverage is the proportion of true values that fall within the predicted intervals.
+    
+    Parameters
+    ----------
+    predicted_params : torch.Tensor of shape (N, T, 2)
+        The predicted parameters of the normal distribution for each sample and time step.
+    y : torch.Tensor of shape (N, T)
+        The true values for each sample and time step.
+    alpha : float
+        The level of the interval considered: I = [F^-1(alpha/2), F^-1(1-alpha/2)].
+        The default corresponds to 2 * 0.5 / 99,
+        which is the same level used in the QuantilesComposite distribution.
+    reduce_mean : bool
+        Whether to reduce the mean over the batch.
+
+    Returns
+    -------
+    torch.Tensor of shape (1,)
+        The coverage at the alpha level.
+    """
+    mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
+    normal_dist = Normal(mu, sigma)
+    lower_bound = normal_dist.icdf(torch.tensor(alpha / 2))
+    upper_bound = normal_dist.icdf(torch.tensor(1 - alpha / 2))
+    coverage = ((y >= lower_bound) & (y < upper_bound)).float()
+    # Reduce over the time dimension
+    coverage = coverage.mean(dim=1)
+    if reduce_mean:
+        return coverage.mean()
+    else:
+        return coverage
+
+
 class NormalDistribution:
     """
     Object that contains the loss function, cdf and metrics for normal distributions.
@@ -65,6 +101,7 @@ class NormalDistribution:
         self.metrics = {
             'MAE': normal_mae,
             'CRPS': self.loss_function,
+            'Coverage': normal_coverage
         }
 
     def inverse_cdf(self, predicted_params, u):
