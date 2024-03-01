@@ -1,20 +1,32 @@
 """
 Defines the QuantileCompositeDistribution class.
 """
+
 import torch
-from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS
+import torch.nn.functional as F
+from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS, quantiles_coverage
 from utils.utils import add_batch_dim
 
 
 class QuantileCompositeDistribution:
     """
     Object that can define a distribution from a set of quantiles.
+    Remark: to ensure that the quantiles do not cross, the predictions
+    should be the first quantile q0, followed by the successive differences
+    between the quantiles, i.e. q1 - q0, q2 - q1, ..., qQ - qQ-1.
+    A Sotfplus activation is applied to the differences to ensure that they
+    are positive.
 
     Parameters
     ----------
+    Q: int, optional
+        The number of quantiles predicted. Defaults to 99.
     """
-    def __init__(self):
-        self.probas = torch.linspace(0.01, 0.99, 99)
+
+    def __init__(self, Q=99):
+        # We use the optimal quantiles, i.e. those which best optimize the CRPS.
+        # See (Zamo et Naveau, 2018) for more details.
+        self.probas = torch.linspace(1 / Q, 1, Q) - 0.5 / Q
         self.n_parameters = len(self.probas)
         self.is_multivariate = False
 
@@ -23,14 +35,33 @@ class QuantileCompositeDistribution:
 
         # Define the metrics
         self.metrics = {}
-        # Then, the MAE (corresponding to the 0.5 quantile)
+        # The "MAE" is defined here as the L1 norm between y and the 0.5-quantile
         self.metrics["MAE"] = CompositeQuantileLoss(torch.tensor([0.5]))
-        # Then, the CRPS
         self.metrics["CRPS"] = QuantilesCRPS(self.probas)
+        self.metrics["Coverage"] = quantiles_coverage
 
     def activation(self, predicted_params):
-        # Identity activation
-        return predicted_params
+        """
+        Converts the parameters predicted by the model to quantiles.
+
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, Q)
+            The predicted parameters. For a given sample n and time step t,
+            predicted_params[n, t, 0] is interpreted as the first quantile,
+            while predicted_params[n, t, k] = q_k - q_k-1 for k > 0.
+
+        Returns
+        -------
+        quantiles : torch.Tensor of shape (N, T, Q)
+            The predicted quantiles.
+        """
+        # Apply the softplus activation to the differences to ensure that they are positive
+        pred = torch.cat(
+            [predicted_params[:, :, :1], F.softplus(predicted_params[:, :, 1:])], dim=2
+        )
+        # Compute the quantiles
+        return torch.cumsum(pred, dim=2)
 
     def denormalize(self, predicted_params, task, dataset):
         """
@@ -66,8 +97,7 @@ class QuantileCompositeDistribution:
         # First, we need to find for each sample in which bin the true value falls
         # (i.e. which two quantiles it is between)
         # For every n we want i such that pq[n, i-1] <= y[n, 0] < pq[n, i]
-        idx = torch.searchsorted(predicted_params,
-                                 x.unsqueeze(2), side="right")
+        idx = torch.searchsorted(predicted_params, x.unsqueeze(2), side="right")
         return predicted_params, x, idx
 
     def pdf(self, predicted_params, x):
@@ -97,7 +127,7 @@ class QuantileCompositeDistribution:
         idx = idx.clamp(1, self.n_parameters - 1)
         dpq = pq = pq.gather(2, idx) - pq.gather(2, idx - 1)
         dt = self.probas[1:] - self.probas[:-1]
-        res = (dt[idx - 1] / dpq)
+        res = dt[idx - 1] / dpq
         # Now we set the pdf to 0 for the values of x that are outside the bounds
         res[~in_mask] = 0
         # If x is of shape (1, T), remove the batch dimension
@@ -139,16 +169,9 @@ class QuantileCompositeDistribution:
 
     def hyperparameters(self):
         """
-        Returns the hyperparameters of the distribution. Here, it is
-        the minimum and maximum values of the distribution, as well as
-        the quantiles defining the distribution.
-
         Returns
         -------
         hyperparameters : dict
             The hyperparameters of the distribution.
         """
-        return {"min_value": self.min_value,
-                "max_value": self.max_value,
-                "probas": self.probas}
-
+        return {"probas": self.probas}

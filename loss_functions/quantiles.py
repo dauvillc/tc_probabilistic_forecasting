@@ -2,6 +2,7 @@
 Implements various functions to evaluate the quality of a set of
 predicted quantiles.
 """
+
 import torch
 import torch.nn as nn
 
@@ -40,8 +41,7 @@ class CompositeQuantileLoss(nn.Module):
         # y_pred has shape (N, T, Q), while y_true has shape (N, T)
         y_true = y_true.unsqueeze(2)  # (N, T, 1)
         # Compute the quantile loss for each sample and each quantile
-        loss = torch.max(probas * (y_true - y_pred),
-                         (1 - probas) * (y_pred - y_true))
+        loss = torch.max(probas * (y_true - y_pred), (1 - probas) * (y_pred - y_true))
         # Reduce the loss over the quantiles
         loss = loss.mean(dim=(1, 2))
         # Reduce the loss over the batch
@@ -96,11 +96,14 @@ class QuantilesCRPS:
         # Compute the CRPS, considering a linear interpolation between the predicted quantiles.
         # We'll first compute the integral within each bin of the predicted quantiles.
         # We'll make some pre-computations:
-        pql, pqr = pq[:, :-1], pq[:, 1:]  # Left and right predicted quantiles (p_{k} and p_{k+1})
+        pql, pqr = (
+            pq[:, :-1],
+            pq[:, 1:],
+        )  # Left and right predicted quantiles (p_{k} and p_{k+1})
         t = tau[:-1]  # Tau without the last probability
         dpq = pqr - pql  # Differences between successive predicted quantiles
         a = dt / dpq  # Slopes of the linear interpolation
-        pqs = pq ** 2  # Squared predicted quantiles
+        pqs = pq**2  # Squared predicted quantiles
         pqc = (pqs * pq) / 3  # Cube of the predicted quantiles
         dpqs = pqs[:, 1:] - pqs[:, :-1]  # Diff between successive squared predicted quantiles
         dpqc = pqc[:, 1:] - pqc[:, :-1]  # Diff between successive cubed predicted quantiles
@@ -108,9 +111,9 @@ class QuantilesCRPS:
         # Compute the integral within each bin
         # Note: if y is within a bin, the integral within that bin will have to be
         # computed differently after.
-        integral = dpq * v ** 2\
-                + v * (a * dpqs - 2 * pql * dt)\
-                + a ** 2 * (dpqc - pql * dpqs + pql ** 2 * dpq)
+        integral = (
+            dpq * v**2 + v * (a * dpqs - 2 * pql * dt) + a**2 * (dpqc - pql * dpqs + pql**2 * dpq)
+        )
         # There are now three cases:
         # 1. y is between two quantiles q_{k0} <= y < q_{k0 + 1}
         # 2. y is below the first quantile y < q_{0}
@@ -122,41 +125,45 @@ class QuantilesCRPS:
         # For the following, we need y to have shape (N * T,)
         y = y.squeeze(1)
         # Case 1. y is between two quantiles (i.e. k0 > 0 and k0 < Q)
-        mask = ((k0 > 0) & (k0 < Q))
+        mask = (k0 > 0) & (k0 < Q)
         if mask.sum() > 0:  # If there are no samples in this case, skip it.
-            k0_m, y_m  = k0[mask] - 1, y[mask]
+            k0_m, y_m = k0[mask] - 1, y[mask]
             a_m, t_m = a[mask, k0_m], t[k0_m]
             pql_m, pqr_m = pql[mask, k0_m], pqr[mask, k0_m]
             # Pre-computation
-            ys = y_m ** 2  # y^2
+            ys = y_m**2  # y^2
             yc = (y_m * ys) / 3  # y^3 / 3
             dypl = y_m - pql_m  # y - pq_{k0}
-            dypls = y_m ** 2 - pql_m ** 2  # y^2 - pq_{k0}^2
-            dyplc = yc - pql_m ** 3 / 3  # (y^3 - pq_{k0}^3)/3
+            dypls = y_m**2 - pql_m**2  # y^2 - pq_{k0}^2
+            dyplc = yc - pql_m**3 / 3  # (y^3 - pq_{k0}^3)/3
             dpry = pqr_m - y_m  # pq_{k0 + 1} - y
-            dprys = pqr_m ** 2 - y_m ** 2  # pq_{k0 + 1}^2 - y^2
-            dpryc = pqr_m ** 3 / 3 - yc  # pq_{k0 + 1}^3 / 3 - y^3 / 3
+            dprys = pqr_m**2 - y_m**2  # pq_{k0 + 1}^2 - y^2
+            dpryc = pqr_m**3 / 3 - yc  # pq_{k0 + 1}^3 / 3 - y^3 / 3
             ty = t_m + a_m * (y_m - pql_m) - 1  # F(y) - 1 for Y within a bin
             where_mask = torch.where(mask)[0]  # integral[mask] would assign to a copy
             # Integral from q_{k0} to y
-            integral[where_mask, k0_m] = t_m ** 2 * dypl\
-                    + t_m * a_m * (dypls - 2 * pql_m * dypl)\
-                    + a_m ** 2 * (dyplc - pql_m * dypls + pql_m ** 2 * dypl)
+            integral[where_mask, k0_m] = (
+                t_m**2 * dypl
+                + t_m * a_m * (dypls - 2 * pql_m * dypl)
+                + a_m**2 * (dyplc - pql_m * dypls + pql_m**2 * dypl)
+            )
             # Integral from y to q_{k0 + 1}
-            integral[where_mask, k0_m] += ty ** 2 * dpry\
-                    + ty * a_m * (dprys - 2 * y_m * dpry)\
-                    + a_m ** 2 * (dpryc - y_m * dprys + y_m ** 2 * dpry)
+            integral[where_mask, k0_m] += (
+                ty**2 * dpry
+                + ty * a_m * (dprys - 2 * y_m * dpry)
+                + a_m**2 * (dpryc - y_m * dprys + y_m**2 * dpry)
+            )
         # Sum the integral over the bins
         integral = integral.sum(dim=1)
         # Case 2. y < q_{0}
-        mask = (k0 == 0)
+        mask = k0 == 0
         if mask.sum() > 0:
             # In this case, we stop considering a linear interpolation.
             # We consider that F(x) = tau_0 from y to q_0
             # integral[mask] += (1 - tau[0]) ** 2 * (pql[mask][:, 0] - y[mask])
             integral[mask] += pql[mask][:, 0] - y[mask]
         # Case 3. y >= q_{Q - 1}
-        mask = (k0 == Q)
+        mask = k0 == Q
         if mask.sum() > 0:
             # In this case, we stop considering a linear interpolation.
             # We consider that F(x) = tau_{Q - 1} from y to q_{Q - 1}
@@ -166,3 +173,30 @@ class QuantilesCRPS:
         if reduce_mean:
             res = res.mean()
         return res
+
+
+def quantiles_coverage(pred, y, reduce_mean=True):
+    """
+    Computes the coverage of the predicted quantiles.
+    The coverage is the proportion of true values that fall within the predicted
+    quantiles.
+
+    Parameters
+    ----------
+    pred: torch.Tensor, of shape (N, T, Q)
+        The predicted quantiles.
+    y: torch.Tensor, of shape (N, T)
+        The true values.
+    reduce_mean: bool, optional
+        Whether to reduce the coverage over the batch.
+
+    Returns
+    -------
+    The coverage, as a float or a tensor of shape (N,).
+    """
+    covered = (y >= pred[:, :, 0]) & (y < pred[:, :, -1])
+    # Average the coverage over the time steps
+    coverage = covered.float().mean(dim=1)
+    if reduce_mean:
+        coverage = coverage.mean()
+    return coverage
