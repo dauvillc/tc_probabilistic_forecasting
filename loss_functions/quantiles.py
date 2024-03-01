@@ -103,16 +103,14 @@ class QuantilesCRPS:
         t = tau[:-1]  # Tau without the last probability
         dpq = pqr - pql  # Differences between successive predicted quantiles
         a = dt / dpq  # Slopes of the linear interpolation
-        pqs = pq**2  # Squared predicted quantiles
-        pqc = (pqs * pq) / 3  # Cube of the predicted quantiles
-        dpqs = pqs[:, 1:] - pqs[:, :-1]  # Diff between successive squared predicted quantiles
-        dpqc = pqc[:, 1:] - pqc[:, :-1]  # Diff between successive cubed predicted quantiles
+        dpqs = dpq ** 2  # (p_{k+1} - p_{k})^2
+        dpqc = dpqs * dpq  # (p_{k+1} - p_{k})^3
         v = t - (y < pql).float()  # t - 1 if y < pq_k, t if y >= pq_k
         # Compute the integral within each bin
         # Note: if y is within a bin, the integral within that bin will have to be
         # computed differently after.
         integral = (
-            dpq * v**2 + v * (a * dpqs - 2 * pql * dt) + a**2 * (dpqc - pql * dpqs + pql**2 * dpq)
+            dpq * v ** 2 + v * a * dpqs + a ** 2 * dpqc / 3
         )
         # There are now three cases:
         # 1. y is between two quantiles q_{k0} <= y < q_{k0 + 1}
@@ -131,27 +129,21 @@ class QuantilesCRPS:
             a_m, t_m = a[mask, k0_m], t[k0_m]
             pql_m, pqr_m = pql[mask, k0_m], pqr[mask, k0_m]
             # Pre-computation
-            ys = y_m**2  # y^2
-            yc = (y_m * ys) / 3  # y^3 / 3
             dypl = y_m - pql_m  # y - pq_{k0}
-            dypls = y_m**2 - pql_m**2  # y^2 - pq_{k0}^2
-            dyplc = yc - pql_m**3 / 3  # (y^3 - pq_{k0}^3)/3
+            dypls = dypl ** 2  # (y - pq_{k0})^2
+            dyplc = dypls * dypl  # (y - pq_{k0})^3
             dpry = pqr_m - y_m  # pq_{k0 + 1} - y
-            dprys = pqr_m**2 - y_m**2  # pq_{k0 + 1}^2 - y^2
-            dpryc = pqr_m**3 / 3 - yc  # pq_{k0 + 1}^3 / 3 - y^3 / 3
+            dprys = dpry ** 2  # (pq_{k0 + 1} - y)^2
+            dpryc = dprys * dpry  # (pq_{k0 + 1} - y)^3
             ty = t_m + a_m * (y_m - pql_m) - 1  # F(y) - 1 for Y within a bin
             where_mask = torch.where(mask)[0]  # integral[mask] would assign to a copy
             # Integral from q_{k0} to y
             integral[where_mask, k0_m] = (
-                t_m**2 * dypl
-                + t_m * a_m * (dypls - 2 * pql_m * dypl)
-                + a_m**2 * (dyplc - pql_m * dypls + pql_m**2 * dypl)
+                dypl * t_m ** 2 + t_m * a_m * dypls + a_m ** 2 * dyplc / 3
             )
             # Integral from y to q_{k0 + 1}
             integral[where_mask, k0_m] += (
-                ty**2 * dpry
-                + ty * a_m * (dprys - 2 * y_m * dpry)
-                + a_m**2 * (dpryc - y_m * dprys + y_m**2 * dpry)
+                dpry * ty ** 2 + ty * a_m * dprys + a_m ** 2 * dpryc / 3
             )
         # Sum the integral over the bins
         integral = integral.sum(dim=1)
