@@ -16,6 +16,8 @@ from utils.utils import matplotlib_markers, sshs_category
 
 
 if __name__ == "__main__":
+    # Set the seed with torch
+    torch.manual_seed(0)
     # Set sns style
     sns.set_style("whitegrid")
 

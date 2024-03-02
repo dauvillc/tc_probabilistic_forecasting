@@ -161,7 +161,8 @@ class QuantilesCRPS:
             # We consider that F(x) = tau_{Q - 1} from y to q_{Q - 1}
             # integral[mask] += tau[-1] ** 2 * (y[mask] - pqr[mask][:, -1])
             integral[mask] += y[mask] - pqr[mask][:, -1]
-        res = integral.view(N, T).sum(dim=1)
+        # Reshape back to (N, T) and average over the time steps
+        res = integral.view(N, T).mean(dim=1)
         if reduce_mean:
             res = res.mean()
         return res
