@@ -110,7 +110,6 @@ class StormPredictionModel(pl.LightningModule):
         if self.use_weighted_loss:
             self.weighted_loss = WeightedLoss(
                 train_dataset,
-                test_goodness_of_fit=True,
                 plot_weights="figures/weighted_loss.png",
             )
         # Create the TiltedLoss object if needed

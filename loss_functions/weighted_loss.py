@@ -1,10 +1,11 @@
 """
 Implements a weighted loss function.
 """
+
 import matplotlib.pyplot as plt
 import torch
 import scipy.stats as ss
-from torch.distributions import Gamma
+from torch.distributions import Weibull
 
 
 class WeightedLoss:
@@ -22,56 +23,60 @@ class WeightedLoss:
         get_normalization_constants methods.
     test_goodness_of_fit : bool, optional
         If True, perform a Kolmogorov-Smirnov test to check if the fitted
-        gamma distribution is a good fit to the intensities.
-        Default is False.
+        distribution is a good fit to the intensities.
+        Default is False._smalll
     plot_weights : str or None, optional
         If not None, the path to save a plot of the weights of the samples.
     """
 
-    def __init__(self, train_dataset, test_goodness_of_fit=False,
-                 plot_weights=None):
+    def __init__(self, train_dataset, test_goodness_of_fit=False, plot_weights=None):
         # Save a pointer to the training dataset
         self.train_dataset = train_dataset
+        print("Setting up weighted loss")
         # Get the intensities of the training samples
         intensities = train_dataset.get_sample_intensities()
         # Compute the maximum intensity over all time steps
         max_intensities, _ = torch.max(intensities, dim=1)
         # Convert the intensities to a numpy array for compatibility with scipy
         max_intensities = max_intensities.numpy()
-        # Fit a gamma distribution to the intensities. When the loss is called,
+        # Shift the intensities so that the minimum is 1.
+        max_intensities -= min(max_intensities) - 1
+        # Fit a weibull distribution to the intensities. When the loss is called,
         # the pdf will be used to compute the weights.
-        a, loc, scale = ss.gamma.fit(max_intensities)
-        self.params = (a, loc, scale)
-        # Create a torch Gamma distribution from the fitted parameters. Torch expects
-        # the concentration and rate parameters (alpha and beta) instead of the shape
-        # and scale parameters (a and scale).
-        self.distribution = Gamma(a, 1 / scale)
+        shape, loc, scale = ss.weibull_min.fit(max_intensities, floc=0)
+        self.scale, self.shape = scale, shape
+        # Create a torch distribution from the fitted parameters.
+        distribution = Weibull(scale=scale, concentration=shape)
 
         # Test the goodness of fit if requested
         if test_goodness_of_fit:
-            # Perform a Kolmogorov-Smirnov test to check if the fitted gamma
+            # Perform a Kolmogorov-Smirnov test to check if the fitted
             # distribution is a good fit to the intensities
-            _, p_value = ss.kstest(max_intensities, 'gamma', self.params)
+            _, p_value = ss.kstest(max_intensities, "weibull_min", args=(shape, 0, scale))
             print(f"Kolmogorov-Smirnov test p-value: {p_value}")
 
         # Plot the weights if requested
         if plot_weights is not None:
             # On the same plot, show:
             # * The histogram of the maximum intensities
-            # * The fitted gamma distribution
-            # * The weights, which are the inverse of the fitted gamma distribution,
+            # * The fitted distribution
+            # * The weights, which are the inverse of the fitted distribution,
             #   with a different y axis
             fig, ax1 = plt.subplots()
             ax2 = ax1.twinx()
             # Plot an histogram of the maximum intensities
-            ax1.hist(max_intensities, density=True, alpha=0.5,
-                     label="Empirical max intensities distribution")
-            # Plot the fitted gamma distribution
+            ax1.hist(
+                max_intensities,
+                density=True,
+                alpha=0.5,
+                label="Empirical max intensities distribution",
+            )
+            # Plot the fitted distribution
             x = torch.linspace(1, max(max_intensities), 100)
-            y = ss.gamma.pdf(x, *self.params)
-            ax1.plot(x, y, label="Fitted gamma distribution")
+            y = distribution.log_prob(x).exp().numpy()
+            ax1.plot(x, y, label="Fitted distribution")
             # Plot the weights
-            ax2.plot(x, 1 / y, 'r.', label="Weights")
+            ax2.plot(x, 1 / y, "r.", label="Weights")
             # Disable the grid for the weights
             ax2.grid(False)
             ax1.set_xlabel("Max intensity")
@@ -79,6 +84,7 @@ class WeightedLoss:
             ax2.set_ylabel("Weights")
             fig.legend()
             plt.savefig(plot_weights)
+        print("Weighted loss set up")
 
     def __call__(self, loss_values, intensities, reduce_mean=True):
         """
@@ -102,13 +108,20 @@ class WeightedLoss:
         device = loss_values.device
         # The intensities taken from the batch are normalized, so we need to
         # multiply them by the normalization constant to get the actual intensities
-        means, stds = self.train_dataset.get_normalization_constants('vmax')
+        means, stds = self.train_dataset.get_normalization_constants("vmax")
         means, stds = means.to(device), stds.to(device)
         intensities = intensities * stds + means
         # Now take the max intensity over all time steps
         intensities, _ = torch.max(intensities, dim=1)
-        # Compute the weights using the fitted gamma distribution
-        probas = torch.exp(self.distribution.log_prob(intensities)).to(device)
+        # Shift the intensities so that the minimum is 1.
+        intensities -= torch.min(intensities) - 1
+        # Create a torch distribution from the fitted parameters.
+        distribution = Weibull(
+            scale=torch.tensor(self.scale, device=device),
+            concentration=torch.tensor(self.shape, device=device),
+        )
+        probas = distribution.log_prob(intensities).exp()
+        # Compute the weights using the fitted distribution
         weights = 1 / probas
         # Apply the weights to the loss values
         weighted_loss = loss_values * weights

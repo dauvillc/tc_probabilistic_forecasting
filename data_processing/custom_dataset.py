@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 from torchvision.transforms import v2
 from torchvision import tv_tensors
+from tqdm import trange
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
@@ -341,7 +342,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
         # We'll call __getitem__ for each sample
         intensities = []
-        for i in range(len(self)):
+        print("Retrieving sample intensities")
+        for i in trange(len(self)):
             _, _, output_time_series, _ = self[i]
             intensities.append(output_time_series['vmax'])
         # Denormalize the intensities
