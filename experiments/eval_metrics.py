@@ -63,10 +63,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Initialize W&B
-    current_run_name = "metrics-" + "-".join(args.ids)
-    current_run = wandb.init(
-        project="tc_prediction", name=current_run_name, job_type="eval"
-    )
+    current_run_name = args.name
+    current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
 
     # Make predictions using the models from the runs
     all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
@@ -75,9 +73,7 @@ if __name__ == "__main__":
     # If a parameter was provided, use it to display the run names
     if args.param is not None:
         section, param = args.param.split(".")
-        param_notation = (
-            args.param_notation if args.param_notation is not None else param
-        )
+        param_notation = args.param_notation if args.param_notation is not None else param
         # Retrieve the value of the parameter for each run
         run_names = {
             run_id: f"{param_notation}={all_runs_configs[run_id][section][param]}"
@@ -85,10 +81,7 @@ if __name__ == "__main__":
         }
     else:
         # Retrieve the run name for each run id
-        run_names = {
-            run_id: all_runs_configs[run_id]["experiment"]["name"]
-            for run_id in args.ids
-        }
+        run_names = {run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids}
 
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
@@ -141,9 +134,7 @@ if __name__ == "__main__":
             predictions = all_runs_predictions[run_id][task_name]
             task_targets = targets[task_name]
             # Compute the metric without reducing the result to its mean
-            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[
-                metric_name
-            ]
+            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
             metric_value = metric_fn(predictions, task_targets, reduce_mean=False)
             # Store the results
             results[run_id] = metric_value
@@ -191,9 +182,7 @@ if __name__ == "__main__":
             predictions = all_runs_predictions[run_id][task_name]
             task_targets = targets[task_name]
             # Retrieve the metric function
-            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[
-                metric_name
-            ]
+            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
             for category in range(-1, 6):
                 mask = target_sshs == category
                 cat_targets = task_targets[mask]
@@ -242,9 +231,7 @@ if __name__ == "__main__":
         ax.set_ylabel(f"{metric_name} - 95% CI")
         ax.set_xlabel("Maximum SSHS category over t+6h,12h,18h,24h")
         # Save the figure
-        fig.savefig(
-            os.path.join(save_folder, f"{task_name}-{metric_name}-categories.png")
-        )
+        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}-categories.png"))
         current_run.log({f"{task_name}-{metric_name}-categories": wandb.Image(fig)})
 
     # Plot the number of samples per SSHS category

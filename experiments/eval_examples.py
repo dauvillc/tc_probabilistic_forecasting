@@ -54,7 +54,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Initialize W&B
-    current_run_name = "examples-" + "-".join(args.ids)
+    current_run_name = args.name
     current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
 
     # Make predictions using the models from the runs
