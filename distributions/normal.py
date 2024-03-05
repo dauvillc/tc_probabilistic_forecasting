@@ -105,7 +105,7 @@ class NormalDistribution:
         self.metrics = {
             "MAE": normal_mae,
             "CRPS": self.loss_function,
-            "Coverage": normal_coverage,
+            "Coverage at 0.989": normal_coverage,
             "Covered CRPS": CoveredCrps(self.loss_function, normal_coverage, 1.0),
         }
 

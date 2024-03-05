@@ -40,7 +40,7 @@ class QuantileCompositeDistribution:
         self.metrics["MAE"] = CompositeQuantileLoss(torch.tensor([0.5]))
         crps_fn = QuantilesCRPS(self.probas)
         self.metrics["CRPS"] = crps_fn
-        self.metrics["Coverage"] = quantiles_coverage
+        self.metrics["Coverage at 0.989"] = quantiles_coverage
         self.metrics["Covered CRPS"] = CoveredCrps(crps_fn, quantiles_coverage, 1.0)
 
     def activation(self, predicted_params):
