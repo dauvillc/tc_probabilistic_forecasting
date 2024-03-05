@@ -4,10 +4,12 @@ Implements some functions to retrieve data from wandb.
 import wandb
 import pytorch_lightning as pl
 import torch
+import yaml
 from pathlib import Path
 from experiments.training import create_tasks
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
+from utils.utils import update_dict
 
 
 def make_predictions(run_ids, current_run):
@@ -37,6 +39,10 @@ def make_predictions(run_ids, current_run):
     input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
     pl.seed_everything(42)
 
+    # Retrieve the base config
+    with open('training_cfg.yml', 'r') as file:
+        base_cfg = yaml.safe_load(file)
+
     # ====== WANDB INITIALIZATION ====== #
     api = wandb.Api()
     # Retrieve each run from the ids, and store their names
@@ -59,8 +65,8 @@ def make_predictions(run_ids, current_run):
     run_tasks = {}  # Mapping run_name -> tasks
     prev_tasks = None
     for run, run_id in zip(runs, run_ids):
-        # Retrieve the config from the run
-        cfg = run.config
+        # Retrieve the config from the run, and use it to update the base config
+        cfg = update_dict(base_cfg, run.config)
         run_configs[run_id] = cfg
         # ===== TASKS DEFINITION ==== #
         # Create the tasks
