@@ -75,10 +75,13 @@ if __name__ == "__main__":
         section, param = args.param.split(".")
         param_notation = args.param_notation if args.param_notation is not None else param
         # Retrieve the value of the parameter for each run
-        run_names = {
-            run_id: f"{param_notation}={all_runs_configs[run_id][section][param]}"
-            for run_id in args.ids
-        }
+        run_names = {}
+        for run_id in args.ids:
+            run_config = all_runs_configs[run_id]
+            if param in run_config[section]:
+                run_names[run_id] = f"{param_notation}={run_config[section][param]}"
+            else:
+                run_names[run_id] = f"{param_notation}=None"
     else:
         # Retrieve the run name for each run id
         run_names = {run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids}
