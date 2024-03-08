@@ -113,11 +113,13 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
             train_dataset.get_sample_intensities(), plot_weights="figures/weights.png"
         )
         train_loader = torch.utils.data.DataLoader(
-            train_dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers
+            train_dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers,
+            persistent_workers=True
         )
     else:
         train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+            train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
+            persistent_workers=True
         )
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
