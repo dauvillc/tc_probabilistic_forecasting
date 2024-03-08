@@ -73,6 +73,7 @@ class StormPredictionModel(pl.LightningModule):
             "loss_tilting" in self.training_cfg
             and self.training_cfg["loss_tilting"] not in [None, 0]
         )
+        past_steps = cfg["experiment"]["past_steps"]
         future_steps = cfg["experiment"]["future_steps"]
 
         # Create the encoder
@@ -86,7 +87,7 @@ class StormPredictionModel(pl.LightningModule):
         self.common_linear_model = CommonLinearModule(
             self.encoder.output_shape,
             future_steps,
-            num_input_variables * future_steps,
+            num_input_variables * past_steps,
             cfg["model_hyperparameters"]["clm_reduction_factor"],
         )
         # Create the prediction heads

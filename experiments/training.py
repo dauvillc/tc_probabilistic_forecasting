@@ -116,9 +116,6 @@ if __name__ == "__main__":
     with open("config.yml", "r") as f:
         config = yaml.safe_load(f)
 
-    if past_steps < 3:
-        raise ValueError("The number of past steps must be >= 3.")
-
     # Modifications in case the script is run as part of a sweep
     if args.sweep:
         # Initialize W&B
