@@ -158,9 +158,7 @@ if __name__ == "__main__":
         run_id = experiment_cfg["use-pre-trained-id"]
         try:
             print("Using model from run ", run_id)
-            artifact = current_run.use_artifact(
-                f"arches/tc_prediction/model-{run_id}:latest"
-            )
+            artifact = current_run.use_artifact(f"arches/tc_prediction/model-{run_id}:latest")
             artifact_dir = artifact.download("/home/cdauvill/scratch/artifacts/")
         except wandb.errors.CommError:
             print(f"Could not find the model {run_id} in the W&B artifacts. ")
