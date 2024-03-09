@@ -18,8 +18,9 @@ import seaborn as sns
 import pandas as pd
 import torch
 from collections import defaultdict
-from utils.wandb import make_predictions
+from utils.wandb import retrieve_wandb_runs
 from utils.utils import matplotlib_markers, sshs_category
+from utils.io import load_predictions, load_targets
 
 
 if __name__ == "__main__":
@@ -62,14 +63,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # ======== RUNS CONFIGURATION ======== #
     # Initialize W&B
     current_run_name = args.name
     current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
+    
+    # Retrieve the config of each run
+    runs, configs, all_runs_tasks = retrieve_wandb_runs(args.ids)
 
-    # Make predictions using the models from the runs
-    all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
-        args.ids, current_run
-    )
     # If a parameter was provided, use it to display the run names
     if args.param is not None:
         section, param = args.param.split(".")
@@ -77,15 +78,16 @@ if __name__ == "__main__":
         # Retrieve the value of the parameter for each run
         run_names = {}
         for run_id in args.ids:
-            run_config = all_runs_configs[run_id]
+            run_config = configs[run_id]
             if param in run_config[section]:
                 run_names[run_id] = f"{param_notation}={run_config[section][param]}"
             else:
                 run_names[run_id] = f"{param_notation}=None"
     else:
         # Retrieve the run name for each run id
-        run_names = {run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids}
+        run_names = {run_id: configs[run_id]["experiment"]["name"] for run_id in args.ids}
 
+    # ======= PLOTTING SETUP ======= #
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
     os.makedirs(save_folder, exist_ok=True)
@@ -97,15 +99,19 @@ if __name__ == "__main__":
     cmap = plt.get_cmap("tab10", len(args.ids))
     colors = {run_id: cmap(k) for k, run_id in enumerate(args.ids)}
 
+    # ======== LOAD THE PREDICTIONS AND TARGETS ======== #
+    all_runs_predictions = load_predictions(args.ids)
+    targets = load_targets()
+
     # ======== GENERAL METRICS ======== #
     # In this section we'll plot the metrics for every task, over the whole dataset.
     # When several models perform the same task, we'll plot them on the same plot.
     # First, we need to retrieve the list of all tasks that are performed by at least
     # one model.
-    all_tasks = set()
-    for tasks in all_runs_tasks.values():
-        all_tasks.update(list(tasks.keys()))
-    all_tasks = list(all_tasks)
+    common_tasks = set()
+    for task_dict in all_runs_tasks.values():
+        common_tasks.update(list(task_dict.keys()))
+    common_tasks = list(common_tasks)
 
     # For a given run and a given task, a specific distribution was used for the predictions.
     # Each distributions has a set of metrics associated with it. A metric might be common
@@ -113,7 +119,7 @@ if __name__ == "__main__":
     # We'll build a map M(task_name, metric_name) such that M[t][m] is the list of run ids that
     # implement the metric m for the task t.
     metrics_map = defaultdict(list)
-    for task_name in all_tasks:
+    for task_name in common_tasks:
         # Browse the runs
         # For each run, if the task is implemented, retrieve the metrics and store the run id
         # in the map.

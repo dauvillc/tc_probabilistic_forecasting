@@ -11,7 +11,8 @@ import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-from utils.wandb import make_predictions
+from utils.wandb import retrieve_wandb_runs
+from utils.io import load_targets, load_predictions
 from utils.utils import matplotlib_markers, sshs_category
 
 
@@ -51,19 +52,29 @@ if __name__ == "__main__":
         required=True,
         help="Name of the evaluation run.",
     )
+    parser.add_argument(
+        "-r",
+        "--recreate_dataset",
+        action="store_true",
+        help="Recreate the dataset before evluating each model. Required if the I/O of the\
+            dataset differs between the models.",
+    )
     args = parser.parse_args()
 
+    # ===== RUNS AND CONFIGS =====
     # Initialize W&B
     current_run_name = args.name
     current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
-
-    # Make predictions using the models from the runs
-    all_runs_configs, all_runs_tasks, all_runs_predictions, targets = make_predictions(
-        args.ids, current_run
-    )
+    # Retrieve the config of each run
+    runs, configs, all_runs_tasks = retrieve_wandb_runs(args.ids)
     # Retrieve the run name for each run id
-    run_names = {run_id: all_runs_configs[run_id]["experiment"]["name"] for run_id in args.ids}
+    run_names = {run_id: runs[run_id].name for run_id in args.ids}
 
+    # ===== LOAD TARGETS AND PREDICTIONS =====
+    all_runs_predictions = load_predictions(args.ids)
+    targets = load_targets()
+
+    # ==== PLOTTING PREPARATION ====
     # Create a folder to store the plots
     save_folder = f"figures/evaluation/{current_run_name}"
     os.makedirs(save_folder, exist_ok=True)
@@ -75,14 +86,15 @@ if __name__ == "__main__":
     cmap = plt.get_cmap("tab10", len(args.ids))
     colors = {run_id: cmap(k) for k, run_id in enumerate(args.ids)}
 
+    # ==== PLOTTING ====
     # First, we need to retrieve the list of all tasks that are performed by at least
     # one model.
-    all_tasks = set()
-    for tasks in all_runs_tasks.values():
-        all_tasks.update(list(tasks.keys()))
-    all_tasks = list(all_tasks)
+    common_tasks = set()
+    for task_dict in all_runs_tasks.values():
+        common_tasks.update(list(task_dict.keys()))
+    common_tasks = list(common_tasks)
     # Number of samples and predicted time steps
-    N, T = targets[all_tasks[0]].shape
+    N, T = targets[common_tasks[0]].shape
 
     # Isolate the examples that are at least of the required SSHS category
     sample_intensities = targets["vmax"].max(dim=1).values
@@ -95,7 +107,7 @@ if __name__ == "__main__":
     # We'll make one figure for each task.
     # Each figure will have one row for each example and one column for each time step.
     # Each subplot will show the cdf predicted by each run, plus the target.
-    for task in all_tasks:
+    for task in common_tasks:
         fig, axs = plt.subplots(nrows=args.k_examples, ncols=T, figsize=(20, 5 * args.k_examples))
         fig.suptitle(f"{task}", fontsize=16)
         # Define for which x values we'll plot the cdfs

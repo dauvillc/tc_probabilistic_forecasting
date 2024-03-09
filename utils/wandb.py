@@ -1,130 +1,45 @@
 """
 Implements some functions to retrieve data from wandb.
 """
+
 import wandb
-import pytorch_lightning as pl
-import torch
 import yaml
-from pathlib import Path
-from experiments.training import create_tasks
-from models.lightning_structure import StormPredictionModel
-from data_processing.assemble_experiment_dataset import load_dataset
 from utils.utils import update_dict
+from experiments.training import create_tasks
 
 
-def make_predictions(run_ids, current_run):
+def retrieve_wandb_runs(run_ids):
     """
-    For a set of W&B run ids, retrieve the corresponding models and make
-    predictions on the validation set.
+    For a set of W&B run ids, retrieve the corresponding runs, and
+    returns their configurations.
 
     Parameters
     ----------
     run_ids : list of str
         The ids of the runs to retrieve.
-    current_run : wandb.Run
-        The current run, used to retrieve the artifacts.
 
     Returns
     -------
-    configs: Mapping run_name -> config
-    tasks: Mapping run_name -> tasks dict.
-        A task dict is a mapping task_name -> task_config
-    predictions : Mapping run_name -> predictions on the validation set.
-        The keys are the names of the runs, and the values are mappings
-        task -> predictions. The predictions are returned as the list of all batches
-        of predictions on the validation set (not concatenated nor denormalized,
-        stored on cpu).
-    targets : Mapping task -> targets on the validation set.
-    """
-    input_variables = ['LAT', 'LON', 'HOUR_SIN', 'HOUR_COS']
-    pl.seed_everything(42)
-
+    runs: Mapping run_id -> run
+    configs: Mapping run_id -> config
+    tasks: Mapping run_id -> Mapping task_name -> task dict
+    """ 
     # Retrieve the base config
-    with open('training_cfg.yml', 'r') as file:
+    with open("training_cfg.yml", "r") as file:
         base_cfg = yaml.safe_load(file)
 
-    # ====== WANDB INITIALIZATION ====== #
     api = wandb.Api()
-    # Retrieve each run from the ids, and store their names
-    runs, names = [], []
+    configs, runs, tasks = {}, {}, {}
     for run_id in run_ids:
         try:
-            runs.append(api.run(f"arches/tc_prediction/{run_id}"))
-            names.append(runs[-1].config['experiment']['name'])
+            run = api.run(f"arches/tc_prediction/{run_id}")
         except wandb.errors.CommError:
             print(f"WARNING: Run {run_id} could not be retrieved.")
 
-    # ================= MAKING PREDICTIONS ================= #
-    # We'll now make predictions with every model on the same validation set,
-    # before comparing them.
-    # To do so we need to reconstruct the model from the checkpoint, and then
-    # compute the predictions, and store them on cpu.
-    predictions = {}  # Mapping run_name -> predictions
-    targets = {}  # Mapping task -> targets
-    run_configs = {}  # Mapping run_name -> config
-    run_tasks = {}  # Mapping run_name -> tasks
-    prev_tasks = None
-    for run, run_id in zip(runs, run_ids):
-        # Retrieve the config from the run, and use it to update the base config
-        cfg = update_dict(base_cfg, run.config)
-        run_configs[run_id] = cfg
-        # ===== TASKS DEFINITION ==== #
-        # Create the tasks
-        tasks = create_tasks(cfg)
-        run_tasks[run_id] = tasks
+        # The returned cfg is the base config, overwritten by the run config
+        configs[run_id] = update_dict(base_cfg, run.config)
+        runs[run_id] = run
 
-        # ===== DATA LOADING ===== #
-        # The dataset contains the same samples for every experiment, but not necessarily
-        # the same tasks (although some must be in common).
-        # That means we have to recreate the dataset if the tasks are different.
-        if prev_tasks is None or set(prev_tasks) != set(tasks.keys()):
-            train_dataset, val_dataset, _, val_loader = load_dataset(cfg, input_variables, tasks, ['tcir'])
-        prev_tasks = list(tasks.keys())
-
-        # ===== MODEL RECONSTUCTION ===== #
-        # Retrieve the checkpoint from wandb
-        artifact = current_run.use_artifact(f'arches/tc_prediction/model-{run_id}:best')
-        artifact_dir = artifact.download('/home/cdauvill/scratch/artifacts/')
-        checkpoint = Path(artifact_dir) / 'model.ckpt'
-        # Reconstruct the model from the checkpoint
-        datacube_shape = val_dataset.datacube_shape('tcir')
-        num_input_variables = len(input_variables)
-        model = StormPredictionModel.load_from_checkpoint(checkpoint,
-                                                          input_datacube_shape=datacube_shape,
-                                                          num_input_variables=num_input_variables,
-                                                          tabular_tasks=tasks,
-                                                          train_dataset=train_dataset,
-                                                          val_dataset=val_dataset,
-                                                          cfg=cfg)
-        trainer = pl.Trainer(accelerator='gpu')
-
-        # ===== MAKING PREDICTIONS ===== #
-        # Compute the predictions on the validation set
-        model_predictions = trainer.predict(model, val_loader)
-        # Right now, the predictions are stored as a list of batches. Each batch
-        # is a dictionary mapping task -> predictions.
-        concatenated_predictions = {}
-        for task in model_predictions[0].keys():
-            # The predictions can be either a single tensor, or a tuple of tensors
-            # (for the multivariate normal distribution)
-            if isinstance(model_predictions[0][task], tuple):
-                n_tensors = len(model_predictions[0][task])
-                concatenated_predictions[task] = tuple(torch.cat([batch[task][i] for batch in model_predictions])
-                                                         for i in range(n_tensors))
-            else:
-                concatenated_predictions[task] = torch.cat([batch[task] for batch in model_predictions])
-
-        # Store the predictions of that model
-        predictions[run_id] = concatenated_predictions
-
-    # We also need to save the targets for each task
-    # If the targets for a task are already stored, we don't need to do anything
-    for task in predictions[run_id].keys():
-        if task not in targets.keys():
-            targets[task] = torch.cat([targets_batch[task].cpu() for _, _, targets_batch, _ in val_loader])
-    # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
-    # Remark: the normalization constants were computed on the training set.
-    targets = val_dataset.denormalize_tabular_target(targets)
-
-    return run_configs, run_tasks, predictions, targets
-
+        # Retrieve the tasks performed by the run
+        tasks[run_id] = create_tasks(configs[run_id])
+    return runs, configs, tasks
