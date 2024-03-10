@@ -1,7 +1,7 @@
 experiment:
-  name: normal_50ep_P=1 
+  name: normal_attention_pooling
   # Number of past time steps given as input
-  past_steps: 1
+  past_steps: 4
   # Number of time steps to predict at once
   future_steps: 4
   # Size of the input and output patches, in pixels (resolution=0.07°)
@@ -58,6 +58,8 @@ training_settings:
 model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
   base_block: conv
+  # Type of global spatial pooling to use ('avg' or 'attention')
+  global_pooling: attention
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 6
   # Number of channels in the first hidden layer

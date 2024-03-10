@@ -1,5 +1,6 @@
 from torch import nn
 from models.cnn3d import DownsamplingBlock3D
+from models.layers.attention_pool2d import RotAttentionPool2d
 
 
 class Encoder3d(nn.Module):
@@ -23,9 +24,13 @@ class Encoder3d(nn.Module):
         Number of convolutional blocks.
     hidden_channels: int, optional
         Number of hidden channels in the first convolutional layer.
+    global_pooling: str, optional
+        Type of pooling to use, 'avg' or 'attention'. The attention pooling
+        uses the RotAttentionPool2d module.
     """
 
-    def __init__(self, input_shape, base_block, conv_blocks=5, hidden_channels=4):
+    def __init__(self, input_shape, base_block, conv_blocks=5, hidden_channels=4,
+                 global_pooling='avg'):
         super().__init__()
         self.base_block = base_block
         input_channels, d, h, w = input_shape
@@ -51,8 +56,11 @@ class Encoder3d(nn.Module):
             c = new_c
             # Keep track of the output size of each block
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))
-        # Add a global average pooling layer
-        self.global_pooling = nn.AdaptiveAvgPool3d(1)
+        # Add a global pooling layer
+        if global_pooling == 'avg':
+            self.global_pooling = nn.AdaptiveAvgPool3d(1)
+        elif global_pooling == 'attention':
+            self.global_pooling = RotAttentionPool2d(c, c, num_heads=4, qkv_bias=True)
         self.output_shape = (c, 1, 1, 1)
 
     def forward(self, x):
@@ -69,6 +77,10 @@ class Encoder3d(nn.Module):
         # Apply the convolutional blocks
         for block in self.conv_blocks:
             x = block(x)
+        # The depth dim is now 1, so we'll remove and make the features 2D
+        # for the global pooling
+        x = x.squeeze(2)
         # Apply the global pooling
         x = self.global_pooling(x)
-        return x
+        # Reshape to a 5D tensor for compatibility with the following layers
+        return x.unsqueeze(2)

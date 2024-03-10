@@ -66,13 +66,11 @@ class StormPredictionModel(pl.LightningModule):
         self.input_datacube_shape = input_datacube_shape
         self.num_input_variables = num_input_variables
         self.use_weighted_loss = (
-            "use_weighted_loss" in self.training_cfg
-            and self.training_cfg["use_weighted_loss"]
+            "use_weighted_loss" in self.training_cfg and self.training_cfg["use_weighted_loss"]
         )
-        self.use_tilted_loss = (
-            "loss_tilting" in self.training_cfg
-            and self.training_cfg["loss_tilting"] not in [None, 0]
-        )
+        self.use_tilted_loss = "loss_tilting" in self.training_cfg and self.training_cfg[
+            "loss_tilting"
+        ] not in [None, 0]
         past_steps = cfg["experiment"]["past_steps"]
         future_steps = cfg["experiment"]["future_steps"]
 
@@ -82,6 +80,9 @@ class StormPredictionModel(pl.LightningModule):
             self.model_cfg["base_block"],
             conv_blocks=self.model_cfg["encoder_depth"],
             hidden_channels=self.model_cfg["encoder_channels"],
+            global_pooling=(
+                self.model_cfg["global_pooling"] if "global_pooling" in self.model_cfg else "avg"
+            ),
         )
         # Create the common linear module
         self.common_linear_model = CommonLinearModule(
@@ -135,9 +136,7 @@ class StormPredictionModel(pl.LightningModule):
             )
             # If the weighted loss is used, apply the weights
             if self.use_weighted_loss:
-                losses[task] = self.weighted_loss(
-                    losses[task], future_variables["vmax"]
-                )
+                losses[task] = self.weighted_loss(losses[task], future_variables["vmax"])
             # Same for the tilted loss
             if self.use_tilted_loss:
                 losses[task] = self.tilted_loss(losses[task])
@@ -246,9 +245,7 @@ class StormPredictionModel(pl.LightningModule):
             predictions[task] = self.prediction_heads[task](latent_space)
             # Check if there is an activation function specific to the distribution
             if hasattr(task_params["distrib_obj"], "activation"):
-                predictions[task] = task_params["distrib_obj"].activation(
-                    predictions[task]
-                )
+                predictions[task] = task_params["distrib_obj"].activation(predictions[task])
         return predictions
 
     def configure_optimizers(self):
