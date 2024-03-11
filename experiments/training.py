@@ -88,8 +88,6 @@ def create_tasks(cfg):
 
 if __name__ == "__main__":
     pl.seed_everything(123)
-    # Some parameters
-    input_variables = ["LAT", "LON", "HOUR_SIN", "HOUR_COS"]
 
     # Argument parser
     parser = argparse.ArgumentParser()
@@ -111,6 +109,8 @@ if __name__ == "__main__":
         experiment_cfg["past_steps"],
         experiment_cfg["future_steps"],
     )
+    # Retrieve the input variables
+    input_variables = experiment_cfg["context_variables"]
 
     # Load the project configuration file
     with open("config.yml", "r") as f:
