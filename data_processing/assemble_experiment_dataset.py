@@ -105,6 +105,7 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
     num_workers = (
         cfg["training_settings"]["num_workers"] if "num_workers" in cfg["training_settings"] else 0
     )
+    persistent_workers = num_workers > 0
     if ("sampling_weights" in cfg["training_settings"]) and (
         cfg["training_settings"]["sampling_weights"]
     ):
@@ -114,12 +115,12 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks):
         )
         train_loader = torch.utils.data.DataLoader(
             train_dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers,
-            persistent_workers=True
+            persistent_workers=persistent_workers
         )
     else:
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-            persistent_workers=True
+            persistent_workers=persistent_workers
         )
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 

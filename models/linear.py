@@ -60,16 +60,18 @@ class CommonLinearModule(nn.Module):
         torch tensor of dimensions (N, output_channels)
             The output of the linear module.
         """
-        # Concatenate the past variables into a single tensor
-        past_vars = torch.cat(list(past_vars.values()), dim=1)
-        # Flatten the latent space
+        # Flatten the latent space and apply the first linear layer
         latent_space = latent_space.reshape(latent_space.shape[0], -1) # (N, input_size)
-        # Embed the past variables
-        past_vars = torch.selu(self.embedding_1(past_vars))
-        past_vars = torch.selu(self.embedding_2(past_vars))
-        # Apply the linear layers
         x = torch.selu(self.linear_1(latent_space))
-        x = torch.cat([x, past_vars], dim=1)
+        # Embed the past variables and concatenate them with the latent space
+        if len(past_vars) > 0:  
+            # Concatenate the past variables into a single tensor
+            past_vars = torch.cat(list(past_vars.values()), dim=1)
+            # Embed the past variables
+            past_vars = torch.selu(self.embedding_1(past_vars))
+            past_vars = torch.selu(self.embedding_2(past_vars))
+            x = torch.cat([x, past_vars], dim=1)
+        # Apply the remaining linear layers
         x = torch.selu(self.linear_2(x))
         x = torch.selu(self.linear_3(x))
         return x
