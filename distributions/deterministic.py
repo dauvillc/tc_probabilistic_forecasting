@@ -3,10 +3,10 @@ Implements the DeterministicDistribution class, which is useful to integrate a d
 model into the probabilistic pipeline.
 """
 import torch
-from utils.utils import add_batch_dim
+from utils.utils import add_batch_dim, average_score
 
 
-def mse(y_pred, y_true, reduce_mean=True):
+def mse(y_pred, y_true, reduce_mean="all"):
     """
     MSE Loss.
 
@@ -15,34 +15,25 @@ def mse(y_pred, y_true, reduce_mean=True):
     y_pred : torch.Tensor of shape (N, T, 1)
         The predicted values for each sample and time step.
     y_true : torch.Tensor of shape (N, T)
+    reduce_mean : str
+        Over which dimensions to reduce the mean.
+        Can be "all", "samples", "time" or "none".
     """
     y_pred = y_pred.squeeze(-1)
     loss = (y_pred - y_true) ** 2
-    # Average over the time steps
-    loss = torch.mean(loss, dim=1)
-    # If reduce_mean is True, average over the batch
-    if reduce_mean:
-        return torch.mean(loss)
-    else:
-        return loss
+    return average_score(loss, reduce_mean)
 
 
-def mae(y_pred, y_true, reduce_mean=True):
+def mae(y_pred, y_true, reduce_mean="all"):
     """
     Flattens the tensor and computes the MAE.
     """
     y_pred = y_pred.squeeze(-1)
     loss = torch.abs(y_pred - y_true)
-    # Average over the time steps
-    loss = torch.mean(loss, dim=1)
-    # If reduce_mean is True, average over the batch
-    if reduce_mean:
-        return torch.mean(loss)
-    else:
-        return loss
+    return average_score(loss, reduce_mean)
 
 
-def flatten_RMSE(y_pred, y_true, reduce_mean=True):
+def flatten_RMSE(y_pred, y_true, reduce_mean="all"):
     """
     Flattens the tensor and computes the RMSE.
     """

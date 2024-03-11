@@ -5,6 +5,7 @@ predicted quantiles.
 
 import torch
 import torch.nn as nn
+from utils.utils import average_score
 
 
 class CompositeQuantileLoss(nn.Module):
@@ -25,7 +26,7 @@ class CompositeQuantileLoss(nn.Module):
         # The term (y_true - y_pred) will have shape (N, T, Q).
         self.probas = self.probas.unsqueeze(0)  # (1, Q)
 
-    def __call__(self, y_pred, y_true, reduce_mean=True):
+    def __call__(self, y_pred, y_true, reduce_mean='all'):
         """
         Parameters
         ----------
@@ -33,8 +34,9 @@ class CompositeQuantileLoss(nn.Module):
             The predicted quantiles.
         y_true: torch.Tensor, of shape (N, T)
             The true values.
-        reduce_mean: bool, optional
-            Whether to reduce the loss over the batch dimension.
+        reduce_mean : str
+            Over which dimension(s) to average the score.
+            Can be "all", "samples", "time" or "none".
         """
         # Transfer the probas to the device of y_pred
         probas = self.probas.to(y_pred.device)
@@ -43,11 +45,8 @@ class CompositeQuantileLoss(nn.Module):
         # Compute the quantile loss for each sample and each quantile
         loss = torch.max(probas * (y_true - y_pred), (1 - probas) * (y_pred - y_true))
         # Reduce the loss over the quantiles
-        loss = loss.mean(dim=(1, 2))
-        # Reduce the loss over the batch
-        if reduce_mean:
-            loss = loss.mean()
-        return loss
+        loss = loss.mean(dim=2)
+        return average_score(loss, reduce_mean)
 
 
 class QuantilesCRPS:
@@ -65,7 +64,7 @@ class QuantilesCRPS:
         # Compute the differences between successive probabilities (delta tau)
         self.dt = self.probas[1:] - self.probas[:-1]
 
-    def __call__(self, predicted_quantiles, y, reduce_mean=True):
+    def __call__(self, predicted_quantiles, y, reduce_mean='all'):
         """
         Computes the CRPS from the predicted quantiles.
 
@@ -77,8 +76,9 @@ class QuantilesCRPS:
             The predicted quantiles.
         y: array-like or torch.Tensor, of shape (N, T)
             The true values.
-        reduce_mean: bool, optional
-            Whether to reduce the CRPS over the batch and time steps.
+        reduce_mean: str
+            Over which dimension(s) to average the score.
+            Can be "all", "samples", "time" or "none".
 
         Returns
         -------
@@ -161,14 +161,12 @@ class QuantilesCRPS:
             # We consider that F(x) = tau_{Q - 1} from y to q_{Q - 1}
             # integral[mask] += tau[-1] ** 2 * (y[mask] - pqr[mask][:, -1])
             integral[mask] += y[mask] - pqr[mask][:, -1]
-        # Reshape back to (N, T) and average over the time steps
-        res = integral.view(N, T).mean(dim=1)
-        if reduce_mean:
-            res = res.mean()
-        return res
+        # Reshape back to (N, T)
+        res = integral.view(N, T)
+        return average_score(res, reduce_mean)
 
 
-def quantiles_coverage(pred, y, reduce_mean=True):
+def quantiles_coverage(pred, y, reduce_mean='all'):
     """
     Computes the coverage of the predicted quantiles.
     The coverage is the proportion of true values that fall within the predicted
@@ -180,16 +178,13 @@ def quantiles_coverage(pred, y, reduce_mean=True):
         The predicted quantiles.
     y: torch.Tensor, of shape (N, T)
         The true values.
-    reduce_mean: bool, optional
-        Whether to reduce the coverage over the batch.
+    reduce_mean: str
+        Over which dimension(s) to average the score.
+        Can be "all", "samples", "time" or "none".
 
     Returns
     -------
     The coverage, as a float or a tensor of shape (N,).
     """
     covered = (y >= pred[:, :, 0]) & (y < pred[:, :, -1])
-    # Average the coverage over the time steps
-    coverage = covered.float().mean(dim=1)
-    if reduce_mean:
-        coverage = coverage.mean()
-    return coverage
+    return average_score(covered.float(), reduce_mean)

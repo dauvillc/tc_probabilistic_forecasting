@@ -140,3 +140,31 @@ def add_batch_dim(x, predictions):
     if predictions.ndim == 2:
         predictions = predictions.unsqueeze(0).repeat(x.shape[0], 1, 1)
     return x, predictions
+
+
+def average_score(score, reduction):
+    """
+    Returns the average of a score over a certain dimension.
+
+    Parameters
+    ----------
+    score: torch.Tensor of shape (N, T, P) or (N, T)
+        The score to average.
+    reduction: str
+        Which dimension(s) to average over. Can be "all", "samples", "time" or "none".
+    
+    Returns
+    -------
+    torch.Tensor of shape (0,) or (T,) or (N,) or (N, T)
+        The average score.
+    """
+    if reduction == "all":
+        return score.mean()
+    elif reduction == "samples":
+        return score.mean(dim=0)
+    elif reduction == "time":
+        return score.mean(dim=1)
+    elif reduction == "none":
+        return score
+    else:
+        raise ValueError("reduction must be 'all', 'samples', 'time' or 'none")

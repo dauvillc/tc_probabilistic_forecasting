@@ -4,6 +4,7 @@ P(Y_{1:T} | X_{-P+1:0}).
 """
 import torch
 from distributions.normal import normal_crps
+from utils.utils import average_score
 
 
 class MultivariateNormal:
@@ -32,7 +33,7 @@ class MultivariateNormal:
                 'CRPS': self.marginal_crps
         }
 
-    def loss_function(self, predicted_params, y, reduce_mean=True):
+    def loss_function(self, predicted_params, y, reduce_mean="all"):
         """
         Computes the negative log likelihood of the multivariate normal distribution:
         L(P, y) = -log(P(y))
@@ -46,8 +47,9 @@ class MultivariateNormal:
                 Cholesky factor of the covariance matrix.
         y: torch.Tensor of shape (N, dim)
             Observed values.
-        reduce_mean: bool
-            If True, the loss is averaged over the batch dimension.
+        reduce_mean: str
+            Over which dimensions to reduce the results.
+            Can be "all" or "none".
 
         Returns
         -------
@@ -63,10 +65,10 @@ class MultivariateNormal:
         dist = torch.distributions.MultivariateNormal(mean, scale_tril=L)
         # Compute the negative log likelihood of the distribution.
         loss = -dist.log_prob(y)
-        if reduce_mean:
-            return loss.mean()
-        else:
+        if reduce_mean == "none":
             return loss
+        else:
+            return loss.mean()
 
     def activation(self, predicted_params):
         """
@@ -144,7 +146,7 @@ class MultivariateNormal:
         new_L = stds.unsqueeze(-1) * pred_L
         return new_mean, new_L
 
-    def distance_to_mean_rmse(self, predicted_params, y, reduce_mean=True):
+    def distance_to_mean_rmse(self, predicted_params, y, reduce_mean="all"):
         """
         Computes the RMSE between the mean of the distribution and the observed values.
 
@@ -157,7 +159,7 @@ class MultivariateNormal:
                 Cholesky factor of the covariance matrix.
         y: torch.Tensor of shape (N, dim)
             Observed values.
-        reduce_mean: bool:
+        reduce_mean: str:
             Compatiblity argument, has no effect.
 
         Returns
@@ -167,7 +169,7 @@ class MultivariateNormal:
         mean, _ = predicted_params
         return torch.sqrt(torch.mean((mean - y)**2))
 
-    def marginal_crps(self, predicted_params, y, reduce_mean=True):
+    def marginal_crps(self, predicted_params, y, reduce_mean="all"):
         """
         Computes the average CRPS over each marginal distribution.
 
@@ -180,23 +182,17 @@ class MultivariateNormal:
                 Cholesky factor of the covariance matrix.
         y: torch.Tensor of shape (N, dim)
             Observed values.
-        reduce_mean: bool:
-            If True, the CRPS is averaged over the batch dimension
-                and the time dimension.
-            If False, the CRPS is only averaged over the time dimension.
+        reduce_mean: str
+            Over which dimensions to reduce the results.
+            Can be "all", "samples", "time" or "none".
 
         Returns
         -------
         The average CRPS over each marginal distribution.
-        If reduce_mean is True: returns a scalar.
-        Otherwise, returns a torch.Tensor of shape (N,).
         """
         mean, L = predicted_params
         # Retrieve the standard deviation of each marginal distribution
         std = torch.diagonal(L, dim1=-2, dim2=-1)
         # Compute the CRPS for each marginal distribution
         crps = normal_crps(mean, std, y)
-        if reduce_mean:
-            return crps.mean()
-        else:
-            return crps.mean(dim=-1)
+        return average_score(crps, reduce_mean)

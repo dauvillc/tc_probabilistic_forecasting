@@ -5,7 +5,6 @@ Defines the QuantileCompositeDistribution class.
 import torch
 import torch.nn.functional as F
 from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS, quantiles_coverage
-from loss_functions.common import CoveredCrps
 from utils.utils import add_batch_dim
 
 
@@ -41,7 +40,6 @@ class QuantileCompositeDistribution:
         crps_fn = QuantilesCRPS(self.probas)
         self.metrics["CRPS"] = crps_fn
         self.metrics["Coverage at 0.989"] = quantiles_coverage
-        self.metrics["Covered CRPS"] = CoveredCrps(crps_fn, quantiles_coverage, 1.0)
 
     def activation(self, predicted_params):
         """

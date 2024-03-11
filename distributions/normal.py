@@ -4,8 +4,7 @@ Implements the NormalDistribution class, which can be used as output distributio
 
 import torch
 from torch.distributions import Normal
-from utils.utils import add_batch_dim
-from loss_functions.common import CoveredCrps
+from utils.utils import add_batch_dim, average_score
 
 
 def normal_crps(mu, sigma, y):
@@ -36,22 +35,16 @@ def normal_crps(mu, sigma, y):
     return crps
 
 
-def normal_mae(predicted_params, y, reduce_mean=True):
+def normal_mae(predicted_params, y, reduce_mean="all"):
     """
     Returns the MAE between the predicted mean (which is also the median) and the true value.
     """
-    # Flatten the tensors to get rid of the time dimension
-    predicted_params = predicted_params.view(-1, 2)
-    y = y.view(-1)
-    mu = predicted_params[:, 0]
+    mu = predicted_params[:, :, 0]
     mae = torch.abs(mu - y)
-    if reduce_mean:
-        return mae.mean()
-    else:
-        return mae
+    return average_score(mae, reduce_mean)
 
 
-def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean=True):
+def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean="all"):
     """
     Computes the coverage of the predicted intervals at the alpha level.
     The coverage is the proportion of true values that fall within the predicted intervals.
@@ -66,12 +59,13 @@ def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean=True):
         The level of the interval considered: I = [F^-1(alpha/2), F^-1(1-alpha/2)].
         The default corresponds to 2 * 0.5 / 99,
         which is the same level used in the QuantilesComposite distribution.
-    reduce_mean : bool
-        Whether to reduce the mean over the batch.
+    reduce_mean : str
+        Over which dimension(s) to average the score.
+        Can be "all", "samples", "time" or "none".
 
     Returns
     -------
-    torch.Tensor of shape (1,)
+    torch.Tensor
         The coverage at the alpha level.
     """
     mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
@@ -79,12 +73,7 @@ def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean=True):
     lower_bound = normal_dist.icdf(torch.tensor(alpha / 2))
     upper_bound = normal_dist.icdf(torch.tensor(1 - alpha / 2))
     coverage = ((y >= lower_bound) & (y < upper_bound)).float()
-    # Reduce over the time dimension
-    coverage = coverage.mean(dim=1)
-    if reduce_mean:
-        return coverage.mean()
-    else:
-        return coverage
+    return average_score(coverage, reduce_mean)
 
 
 class NormalDistribution:
@@ -106,7 +95,6 @@ class NormalDistribution:
             "MAE": normal_mae,
             "CRPS": self.loss_function,
             "Coverage at 0.989": normal_coverage,
-            "Covered CRPS": CoveredCrps(self.loss_function, normal_coverage, 1.0),
         }
 
     def activation(self, predicted_params):
@@ -122,7 +110,7 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
         return torch.stack([mu, torch.nn.functional.softplus(sigma)], dim=-1)
 
-    def loss_function(self, predicted_params, y, reduce_mean=True):
+    def loss_function(self, predicted_params, y, reduce_mean='all'):
         """
         Computes the CRPS for a normal distribution, whose parameters are predicted
         by the model.
@@ -134,9 +122,10 @@ class NormalDistribution:
         predicted_params : torch.Tensor of shape (N, T, 2)
             The predicted parameters of the normal distribution for each sample and time step.
         y: torch.Tensor of shape (N, T)
-            The true values for each sample and time step.
-        reduce_mean : bool
-            Whether to reduce the mean of the loss over the batch.
+            The true values for each sample and time step.d
+        reduce_mean : str
+            Over which dimension(s) to average the score.
+            Can be "all", "samples", "time" or "none".
 
         Returns
         -------
@@ -146,13 +135,7 @@ class NormalDistribution:
         mu, sigma = predicted_params[:, :, 0], predicted_params[:, :, 1]
         # Compute the CRPS
         loss = normal_crps(mu, sigma, y)
-        # Compute the mean over the time steps
-        loss = loss.mean(dim=-1)
-        # If necessary, reduce to the mean over the batch
-        if reduce_mean:
-            return loss.mean()
-        else:
-            return loss
+        return average_score(loss, reduce_mean)
 
     def denormalize(self, predicted_params, task, dataset):
         """

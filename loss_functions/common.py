@@ -1,6 +1,7 @@
 """
 Implements metrics whose computation is common to all distributions.
 """
+from utils.utils import average_score
 
 
 class CoveredCrps:
@@ -28,7 +29,7 @@ class CoveredCrps:
         self.coverage_fn = coverage_fn
         self.coverage_threshold = coverage_threshold
 
-    def __call__(self, pred, y, reduce_mean=True):
+    def __call__(self, pred, y, reduce_mean='all'):
         """
         Parameters
         ----------
@@ -36,12 +37,11 @@ class CoveredCrps:
             Predicted distribution.
         y: torch.Tensor
             Target values.
-        reduce_mean: bool
-            Whether to average the result over the batch dimension.
+        reduce_mean: str
+            Over which dimension(s) to average the CRPS.
+            Can be "all", "samples", "time", "none".
         """
-        coverage = self.coverage_fn(pred, y, reduce_mean=False)
-        crps = self.crps_fn(pred, y, reduce_mean=False)
+        coverage = self.coverage_fn(pred, y, reduce_mean="none")
+        crps = self.crps_fn(pred, y, reduce_mean="none")
         crps = crps[coverage >= self.coverage_threshold]
-        if reduce_mean:
-            return crps.mean()
-        return crps
+        return average_score(crps, reduce_mean)
