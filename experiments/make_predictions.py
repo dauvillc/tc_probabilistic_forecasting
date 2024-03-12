@@ -22,17 +22,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "-i", "--run_id", type=str, required=True, help="The run id of the model to use."
     )
+    parser.add_argument(
+        "-w", "--workers", type=int, default=4, help="Number of workers to use for data loading."
+    )
     parser.add_argument("--save_targets", action="store_true", help="Whether to save the targets.")
     args = parser.parse_args()
     run_id = args.run_id
 
     # Create a folder to store the predictions
-    save_dir = os.path.join("data", "predictions",  run_id)
+    save_dir = os.path.join("data", "predictions", run_id)
     os.makedirs(save_dir, exist_ok=True)
 
     # Retrieve the run config from W&B
     runs, cfgs, tasks = retrieve_wandb_runs([run_id])
     run, cfg, tasks = runs[run_id], cfgs[run_id], tasks[run_id]
+    # Set the number of workers for data loading
+    cfg["training_settings"]["num_workers"] = args.workers
 
     # Initialize W&B
     current_run = wandb.init(project="tc_prediction", name=f"pred-{run.name}", job_type="pred")
