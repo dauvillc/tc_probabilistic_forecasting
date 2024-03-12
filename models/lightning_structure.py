@@ -127,7 +127,7 @@ class StormPredictionModel(pl.LightningModule):
         predictions = self.forward(past_variables, past_datacubes)
         # If using a weighted / tilted loss, the loss function should return one value per sample
         # and not the mean over the batch
-        reduce_mean = not (self.use_weighted_loss or self.use_tilted_loss)
+        reduce_mean = "time" if (self.use_weighted_loss or self.use_tilted_loss) else "all"
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
