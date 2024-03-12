@@ -10,6 +10,7 @@ import yaml
 import xarray as xr
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 
 if __name__ == '__main__':
@@ -100,19 +101,24 @@ if __name__ == '__main__':
     # Compute the ratio of NaNs (native + converted from outliers) for each sample
     nan_counts = np.array([datacube[k].isnull().sum() for k in range(datacube.shape[0])])
     nan_ratios = nan_counts / (datacube.shape[1] * datacube.shape[2] * 2)
+    print("Average NaN ratio: ", nan_ratios.mean(), " std: ", nan_ratios.std())
 
     # * For every storm S that contains at least one sample that is more than 10% NaN:
     #   * Find all segments of S's trajectory that do not contain any NaN;
     #   * Consider each of those segments as an independent trajectory, by giving them new SIDs.
-    #   * Discard the samples containing NaNs (and that are thus fully NaN).
+    #   * Discard the samples containing more than 10% of NaNs.
     # * Where the images contain less than 10% of NaNs, fill them with zeros.
 
-    # Retrieve the index of the samples that are fully NaN.
+    # Retrieve the index of the samples that are fully NaN (in the sense of over 10%)
     where_full_nan = np.where(nan_ratios >= 0.1)[0]
     # Retrieve the SIDs corresponding to those samples
     sids_with_full_nan = data_info.iloc[where_full_nan]['SID'].unique()
+    print('"Full" NaN proportion: ', where_full_nan.shape[0] / datacube.shape[0])
+    print('Proportion of storms that include at least one "full" NaN sample: ',
+          sids_with_full_nan.shape[0] / data_info['SID'].unique().shape[0])
 
-    for sid in sids_with_full_nan:
+    print("Processing storms including at least one full-NaN sample...")
+    for sid in tqdm(sids_with_full_nan):
         segments = []
         current_segment = []
         currently_in_segment = False
@@ -131,10 +137,12 @@ if __name__ == '__main__':
                     # Start a new segment if not currently in a segment
                     currently_in_segment = True
                 current_segment.append(k)
-
+        # Add the last segment
+        if currently_in_segment:
+            segments.append(np.array(current_segment))
+        # Give all samples in that segment a new SID
         sid_values = data_info['SID'].values.copy()
         for n_seg, seg in enumerate(segments):
-            # Give all samples in that segment a new SID
             sid_values[seg] = sid_values[seg] + f'_{n_seg}'
         data_info['SID'] = sid_values
     # Drop the samples that are fully NaNs
