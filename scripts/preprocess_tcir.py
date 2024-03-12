@@ -11,6 +11,7 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from utils.utils import sshs_category_array
 
 
 if __name__ == '__main__':
@@ -155,6 +156,23 @@ if __name__ == '__main__':
     datacube = datacube.interpolate_na('h_pixel_offset', method='nearest')
     # NaN values at the border won't be interpolated, we'll fill them with zeros.
     datacube = datacube.fillna(0)
+
+    # === STORM SELECTION ===
+    # Optionally, we can select only the storms which reach a minimum category
+    if 'min_category' in cfg['tcir']:
+        print(f'Selecting storms that reach category {cfg["tcir"]["min_category"]}')
+        # Retrieve the max intensity for each storm
+        max_intensity = data_info.groupby('SID')['INTENSITY'].max()
+        # Retrieve the category corresponding to the max intensity
+        max_category = sshs_category_array(max_intensity)
+        # Select the storms that reach at least once the minimum category
+        selected_sids = max_intensity.index[max_category >= cfg['tcir']['min_category']]
+        data_info = data_info[data_info['SID'].isin(selected_sids)]
+        # Select the corresponding entries in the datacube
+        datacube = datacube.isel(sid_time=data_info.index)
+        # Reset the index of data_info so that it matches datacube.isel
+        data_info = data_info.reset_index(drop=True)
+        print(f"Selected {len(data_info['SID'].unique())} storms.")
 
     # === SAVE THE PREPROCESSED DATA ===
     print("Saving the preprocessed data...")
