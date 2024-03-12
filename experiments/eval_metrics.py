@@ -144,7 +144,7 @@ if __name__ == "__main__":
             task_targets = targets[task_name]
             # Compute the metric without reducing the result to its mean
             metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
-            metric_value = metric_fn(predictions, task_targets, reduce_mean=False)
+            metric_value = metric_fn(predictions, task_targets, reduce_mean="time")
             # Store the results
             results[run_id] = metric_value
         # Make a boxplot of the results, with the run names as xticks
@@ -201,11 +201,10 @@ if __name__ == "__main__":
                 else:
                     cat_preds = predictions[mask]
                 # Compute the metric for the category
-                metric_value = metric_fn(cat_preds, cat_targets, reduce_mean=False)
+                metric_value = metric_fn(cat_preds, cat_targets, reduce_mean="time")
                 # Convert the metric values from tensors to lists
-                # If the metric is a scalar tensor, convert it to a list
                 metric_value = metric_value.tolist()
-                if not isinstance(metric_value, list):
+                if not isinstance(metric_value, list): # If the metric is a scalar
                     metric_value = [metric_value]
                 # Store the results
                 res_ids = res_ids + [run_id] * len(metric_value)
@@ -228,7 +227,7 @@ if __name__ == "__main__":
             y=metric_name,
             hue="model",
             errorbar=("ci", 95),
-            dodge=0.2 if df["model"].nunique() > 1 else False,
+            dodge=0.05 if df["model"].nunique() > 1 else False,
             linewidth=1.5,
             markersize=5,
             err_kws={"linewidth": 1.5, "markersize": 5},
@@ -260,3 +259,75 @@ if __name__ == "__main__":
     # Log the figure to W&B
     current_run.log({"sshs_counts": wandb.Image(fig)})
     plt.close(fig)
+
+    # ==== TIME-STEP WISE METRICS ==== #
+    # In this section, we'll plot the metrics for every model, for each time step.
+    # First, we'll check that T is the same for all models.
+    T = configs[args.ids[0]]["experiment"]["future_steps"]
+    for run_id in args.ids:
+        assert configs[run_id]["experiment"]["future_steps"] == T
+    # We'll use the same approach as for the SSHS categories.
+    for (task_name, metric_name), run_ids in metrics_map.items():
+        # Create a figure with a single plot. The X axis will be the time step,
+        # and the Y axis the metric value.
+        # Each model will be represented by its own line, with confidence intervals.
+        fig, ax = plt.subplots(1, 1)
+        # Create lists to store the results: model, time step, metric value
+        # Those will be assembled into a long-format dataframe
+        res_ids, res_steps, res_values = [], [], []
+        for k, run_id in enumerate(run_ids):
+            # Retrieve the predictions and targets for the run
+            predictions = all_runs_predictions[run_id][task_name]
+            task_targets = targets[task_name]
+            # Retrieve the metric function
+            metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
+            # Evaluate the metric by averaging over the samples and not over time
+            metric_value = metric_fn(predictions, task_targets, reduce_mean="none")  # (N, T) or (N,) or (T,)
+            for t in range(T):
+                # Get the scores of all samples at time t
+                if metric_value.dim() == 1:
+                    if metric_value.shape[0] == T:
+                        # Metric that has one value for each time step
+                        # Consider it constant over time
+                        values_at_t = [metric_value[t].item()]
+                    else:
+                        # Metric that has a single value for all time steps, for each sample
+                        values_at_t = metric_value.tolist()
+                else:
+                    # Metric that has a value for each sample at each time step
+                    values_at_t = metric_value[:, t].tolist()
+                # Store the results in long format
+                res_ids += [run_id] * len(values_at_t)
+                res_steps += [t] * len(values_at_t)  # Time steps of 6 hours
+                res_values += values_at_t
+
+        # Assemble the results in a dataframe
+        df = pd.DataFrame(
+            {
+                "id": res_ids,
+                "model": [run_names[run_id] for run_id in res_ids],
+                "step": res_steps,
+                metric_name: res_values,
+            }
+        )
+        # Plot the results
+        sns.pointplot(
+            data=df,
+            x="step",
+            y=metric_name,
+            hue="model",
+            errorbar=("ci", 95),
+            dodge=0.05 if df["model"].nunique() > 1 else False,
+            linewidth=1.5,
+            markersize=5,
+            err_kws={"linewidth": 1.5, "markersize": 5},
+            ax=ax,
+            palette=[colors[run_id] for run_id in df["id"].unique()],
+            marker=[markers[run_id] for run_id in df["id"].unique()],
+        )
+        ax.set_title(f"{task_name} - {metric_name}")
+        ax.set_ylabel(f"{metric_name} - 95% CI")
+        ax.set_xlabel("Lead time (hours)")
+        # Save the figure
+        fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}-lead_time.png"))
+        current_run.log({f"{task_name}-{metric_name}-lead_time": wandb.Image(fig)})

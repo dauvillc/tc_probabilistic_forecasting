@@ -33,11 +33,15 @@ def mae(y_pred, y_true, reduce_mean="all"):
     return average_score(loss, reduce_mean)
 
 
-def flatten_RMSE(y_pred, y_true, reduce_mean="all"):
+def RMSE(y_pred, y_true, reduce_mean="all"):
     """
-    Flattens the tensor and computes the RMSE.
+    Computes the RMSE.
     """
-    return torch.sqrt(torch.mean((y_pred.flatten() - y_true.flatten()) ** 2))
+    mse = (y_pred.squeeze(-1) - y_true) ** 2
+    if reduce_mean == "all":
+        return torch.sqrt(mse.mean())
+    elif reduce_mean == "samples" or "none":
+        return torch.sqrt(mse.mean(dim=0))
 
 
 class DeterministicDistribution:
@@ -60,7 +64,7 @@ class DeterministicDistribution:
 
         # Define the metrics
         self.metrics = {
-                'RMSE': flatten_RMSE,
+                'RMSE': RMSE,
                 'MAE': mae,
                 'CRPS': mae  # The CRPS is the MAE for a deterministic distribution
                 }
