@@ -58,7 +58,7 @@ class Encoder3d(nn.Module):
             d, h, w = self.conv_blocks[-1].output_size((d, h, w))
         # Add a global pooling layer
         if global_pooling == 'avg':
-            self.global_pooling = nn.AdaptiveAvgPool3d(1)
+            self.global_pooling = nn.AdaptiveAvgPool2d(1)
         elif global_pooling == 'attention':
             self.global_pooling = RotAttentionPool2d(c, c, num_heads=4, qkv_bias=True)
         self.output_shape = (c, 1, 1, 1)
