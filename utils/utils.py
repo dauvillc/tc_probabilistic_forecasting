@@ -102,6 +102,27 @@ def sshs_category(wind_speed):
     return torch.bucketize(wind_speed, thresholds, right=True) - 2
 
 
+def sshs_category_array(wind_speed):
+    """
+    Returns the Saffir-Simpson Hurricane Wind Scale category for a given wind speed.
+    The categories go from -1 (Tropical Depression) to 5.
+
+    Parameters
+    ----------
+    wind_speed : np.ndarray of shape (N,)
+        Batch of wind speeds, in knots.
+
+    Returns
+    -------
+    np.ndarray of shape (N,)
+        The category of the wind speed.
+    """
+    # Define the thresholds for each category
+    thresholds = np.array([0, 34, 64, 83, 96, 113, 137, 220])
+    # Compute the category (which goes from -1 to 5)
+    return np.digitize(wind_speed, thresholds) - 2
+
+
 def update_dict(d, u):
     """
     Updates a dictionary recursively, not in-place.
