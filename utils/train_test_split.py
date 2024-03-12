@@ -10,6 +10,8 @@ def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0
     """
     Splits the IBTrACS dataset into train, validation and test sets.
     The returned splits contain different storms and thus disjoint tracks.
+    If a trajectory "XXXX" is split into subtrajectories "XXXX_0", "XXXX_1", etc.,
+    then all of these subtrajectories are included in the same split.
 
     Parameters
     ----------
@@ -37,9 +39,13 @@ def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0
     """
     # Retrieve all unique SIDs
     sids = ibtracs_data['SID'].unique()
+    # Some SIDs are "XXXX_k" to indicate the kth subtrajectory of the storm "XXXX".
+    # We want to keep these subtrajectories together in the same split.
+    # We'll thus ignore the "_k" suffix while splitting the dataset.
+    merged_sids = [sid.split('_')[0] for sid in sids]
 
     # Split the SIDs into train, val and test sets
-    train_sids, test_sids = train_test_split(sids,
+    train_sids, test_sids = train_test_split(merged_sids,
                                              train_size=(train_size + val_size),
                                              test_size=test_size,
                                              random_state=random_state)
@@ -47,6 +53,11 @@ def train_val_test_split(ibtracs_data, train_size=0.6, val_size=0.2, test_size=0
                                             train_size=train_size / (train_size + val_size),
                                             test_size=val_size / (train_size + val_size),
                                             random_state=random_state)
+    # Add back the "_k" suffix to the SIDs: if 'XXXX' is in a split, add all 'XXXX_k' that are
+    # in sids to the split as well.
+    train_sids = [sid for sid in sids if sid.split('_')[0] in train_sids]
+    val_sids = [sid for sid in sids if sid.split('_')[0] in val_sids]
+    test_sids = [sid for sid in sids if sid.split('_')[0] in test_sids]
     # Retrieve the indices of the train, val and test sets from the SIDs.
     train_indices = ibtracs_data[ibtracs_data['SID'].isin(train_sids)].index.values
     val_indices = ibtracs_data[ibtracs_data['SID'].isin(val_sids)].index.values
