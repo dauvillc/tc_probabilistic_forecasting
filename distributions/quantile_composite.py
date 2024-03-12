@@ -5,6 +5,7 @@ Defines the QuantileCompositeDistribution class.
 import torch
 import torch.nn.functional as F
 from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS, quantiles_coverage
+from loss_functions.common import SSHSBrierScore
 from utils.utils import add_batch_dim
 
 
@@ -34,12 +35,13 @@ class QuantileCompositeDistribution:
         self.loss_function = CompositeQuantileLoss(self.probas)
 
         # Define the metrics
-        self.metrics = {}
-        # The "MAE" is defined here as the L1 norm between y and the 0.5-quantile
-        self.metrics["MAE"] = CompositeQuantileLoss(torch.tensor([0.5]))
-        crps_fn = QuantilesCRPS(self.probas)
-        self.metrics["CRPS"] = crps_fn
-        self.metrics["Coverage at 0.989"] = quantiles_coverage
+        self.metrics = {
+            # The "MAE" is defined here as the L1 norm between y and the 0.5-quantile
+            "MAE": CompositeQuantileLoss(torch.tensor([0.5])),
+            "CRPS": QuantilesCRPS(self.probas),
+            "Coverage at 0.989": quantiles_coverage,
+            "Cat 3 Brier Score": SSHSBrierScore(self.cdf, 3),
+        }
 
     def activation(self, predicted_params):
         """

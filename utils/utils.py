@@ -7,6 +7,11 @@ import torch
 import collections
 
 
+# Thresholds of the Saffir-Simpson Hurricane Wind Scale, in knots, open on the right.
+_SSHS_THRESHOLDS_ = torch.tensor([0, 34, 64, 83, 96, 113, 137, 220])
+_SSHS_THRESHOLDS_ARRAY_ = np.array([0, 34, 64, 83, 96, 113, 137, 220])
+
+
 def to_numpy(tensor):
     """
     Converts a tensor or array-like to a numpy array.
@@ -96,10 +101,8 @@ def sshs_category(wind_speed):
     torch.Tensor of shape (N,)
         The category of the wind speed.
     """
-    # Define the thresholds for each category
-    thresholds = torch.tensor([0, 34, 64, 83, 96, 113, 137, 220])
     # Compute the category (which goes from -1 to 5)
-    return torch.bucketize(wind_speed, thresholds, right=True) - 2
+    return torch.bucketize(wind_speed, _SSHS_THRESHOLDS_, right=True) - 2
 
 
 def sshs_category_array(wind_speed):
@@ -117,10 +120,8 @@ def sshs_category_array(wind_speed):
     np.ndarray of shape (N,)
         The category of the wind speed.
     """
-    # Define the thresholds for each category
-    thresholds = np.array([0, 34, 64, 83, 96, 113, 137, 220])
     # Compute the category (which goes from -1 to 5)
-    return np.digitize(wind_speed, thresholds) - 2
+    return np.digitize(wind_speed, _SSHS_THRESHOLDS_ARRAY_) - 2
 
 
 def update_dict(d, u):

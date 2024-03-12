@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # Initialize W&B
     current_run_name = args.name
     current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
-    
+
     # Retrieve the config of each run
     runs, configs, all_runs_tasks = retrieve_wandb_runs(args.ids)
 
@@ -204,7 +204,7 @@ if __name__ == "__main__":
                 metric_value = metric_fn(cat_preds, cat_targets, reduce_mean="time")
                 # Convert the metric values from tensors to lists
                 metric_value = metric_value.tolist()
-                if not isinstance(metric_value, list): # If the metric is a scalar
+                if not isinstance(metric_value, list):  # If the metric is a scalar
                     metric_value = [metric_value]
                 # Store the results
                 res_ids = res_ids + [run_id] * len(metric_value)
@@ -282,7 +282,9 @@ if __name__ == "__main__":
             # Retrieve the metric function
             metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
             # Evaluate the metric by averaging over the samples and not over time
-            metric_value = metric_fn(predictions, task_targets, reduce_mean="none")  # (N, T) or (N,) or (T,)
+            metric_value = metric_fn(
+                predictions, task_targets, reduce_mean="none"
+            )  # (N, T) or (N,) or (T,)
             for t in range(T):
                 # Get the scores of all samples at time t
                 if metric_value.dim() == 1:

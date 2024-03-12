@@ -1,7 +1,53 @@
 """
 Implements metrics whose computation is common to all distributions.
 """
-from utils.utils import average_score
+
+import torch
+from utils.utils import average_score, _SSHS_THRESHOLDS_
+
+
+class SSHSBrierScore:
+    """
+    Evaluates the Brier score for a probabilistic forecast
+    over the binary task "the intensity is at least of category C"
+    where C is given.
+
+    Parameters
+    ----------
+    cdf_fn: callable
+        Function F such that F(predicted_params, y) is the CDF of the
+        distribution with parameters predicted_params, evaluated at y.
+        F must return a tensor of the same shape as y.
+    cat: int between -1 and 5 (inclusive)
+        The SSHS category to consider.
+    """
+
+    def __init__(self, cdf_fn, cat):
+        self.cdf_fn = cdf_fn
+        self.cat = cat
+        self.threshold = torch.tensor([_SSHS_THRESHOLDS_[cat + 1]])
+
+    def __call__(self, pred, y, reduce_mean="all"):
+        """
+        Parameters
+        ----------
+        pred: torch.Tensor
+            Predicted parameters for the distribution.
+        y: torch.Tensor of shape (N, T)
+            Observations.
+        reduce_mean: str
+            Over which dimension(s) to average the Brier score.
+            Can be "all", "samples", "time", "none".
+        """
+        # Compute P(Y <= cat)
+        p = self.cdf_fn(pred, self.threshold.repeat(y.shape).to(pred.device))
+        # Deduce P(Y > cat)
+        p = 1 - p
+        # Compute the binary target
+        o = (y >= self.threshold).float()
+        # Deduce the Brier score
+        brier = (p - o) ** 2
+        return average_score(brier, reduce_mean)
 
 
 class CoveredCrps:
@@ -29,7 +75,7 @@ class CoveredCrps:
         self.coverage_fn = coverage_fn
         self.coverage_threshold = coverage_threshold
 
-    def __call__(self, pred, y, reduce_mean='all'):
+    def __call__(self, pred, y, reduce_mean="all"):
         """
         Parameters
         ----------

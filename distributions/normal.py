@@ -5,6 +5,7 @@ Implements the NormalDistribution class, which can be used as output distributio
 import torch
 from torch.distributions import Normal
 from utils.utils import add_batch_dim, average_score
+from loss_functions.common import SSHSBrierScore
 
 
 def normal_crps(mu, sigma, y):
@@ -95,6 +96,7 @@ class NormalDistribution:
             "MAE": normal_mae,
             "CRPS": self.loss_function,
             "Coverage at 0.989": normal_coverage,
+            "Cat 3 Brier Score": SSHSBrierScore(self.cdf, 3),
         }
 
     def activation(self, predicted_params):
