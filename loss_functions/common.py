@@ -39,6 +39,8 @@ class SSHSBrierScore:
             Over which dimension(s) to average the Brier score.
             Can be "all", "samples", "time", "none".
         """
+        # Move the threshold to the right device
+        self.threshold = self.threshold.to(pred.device)
         # Compute P(Y <= cat)
         p = self.cdf_fn(pred, self.threshold.repeat(y.shape).to(pred.device))
         # Deduce P(Y > cat)
