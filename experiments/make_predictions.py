@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     # ===== DATA LOADING ===== #
     input_variables = cfg["input_variables"]
-    train_dataset, val_dataset, _, val_loader = load_dataset(cfg, input_variables, tasks, ["tcir"])
+    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, ["tcir"], "val")
 
     # ===== MODEL RECONSTUCTION ===== #
     # Retrieve the checkpoint from wandb
@@ -59,8 +59,7 @@ if __name__ == "__main__":
         input_datacube_shape=datacube_shape,
         num_input_variables=num_input_variables,
         tabular_tasks=tasks,
-        train_dataset=train_dataset,
-        val_dataset=val_dataset,
+        dataset=val_dataset,
         cfg=cfg,
     )
     trainer = pl.Trainer(accelerator="gpu")

@@ -41,10 +41,8 @@ class StormPredictionModel(pl.LightningModule):
             The number of values to predict for the task.
         - 'distrib_obj': Distribution object implementing loss_function, metrics
             and optionally activation.
-    train_dataset: SuccessiveStormsDataset
-        Pointer to the training dataset.
-    val_dataset: SuccessiveStormsDataset
-        Pointer to the validation dataset. Used to denormalize the predictions.
+    dataset: SuccessiveStepsDataset
+        Pointer to the dataset object, used to denormalize the predictions and targets.
     cfg: dict
         The configuration dictionary.
     """
@@ -54,13 +52,12 @@ class StormPredictionModel(pl.LightningModule):
         input_datacube_shape,
         num_input_variables,
         tabular_tasks,
-        train_dataset,
-        val_dataset,
+        dataset,
         cfg,
     ):
         super().__init__()
         self.tabular_tasks = tabular_tasks
-        self.train_dataset, self.val_dataset = train_dataset, val_dataset
+        self.dataset = dataset
         self.model_cfg = cfg["model_hyperparameters"]
         self.training_cfg = cfg["training_settings"]
         self.input_datacube_shape = input_datacube_shape
@@ -111,7 +108,7 @@ class StormPredictionModel(pl.LightningModule):
         # Create the WeightedLoss object if needed
         if self.use_weighted_loss:
             self.weighted_loss = WeightedLoss(
-                train_dataset,
+                dataset,
                 plot_weights="figures/weighted_loss.png",
             )
         # Create the TiltedLoss object if needed
@@ -181,14 +178,14 @@ class StormPredictionModel(pl.LightningModule):
 
         # Before computing the metrics, we'll denormalize the future values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
-        future_variables = self.val_dataset.denormalize_tabular_target(future_variables)
+        future_variables = self.dataset.denormalize_tabular_target(future_variables)
 
         # Compute the metrics for each task
         for task, task_params in self.tabular_tasks.items():
             # Denormalize the predictions using the task-specific denormalization function
             # so that the metrics are computed in the original scale
             predictions[task] = task_params["distrib_obj"].denormalize(
-                predictions[task], task, self.train_dataset
+                predictions[task], task, self.dataset
             )
             for metric_name, metric in task_params["distrib_obj"].metrics.items():
                 # Compute the metric in the original scale
@@ -211,7 +208,7 @@ class StormPredictionModel(pl.LightningModule):
         # Denormalize the predictions using the task-specific denormalization function
         for task, task_params in self.tabular_tasks.items():
             predictions[task] = task_params["distrib_obj"].denormalize(
-                predictions[task], task, self.train_dataset
+                predictions[task], task, self.dataset
             )
         return predictions
 

@@ -6,12 +6,14 @@ in config.yml beforehand.
 """
 import sys
 sys.path.append('./')
+from pathlib import Path
 import yaml
 import xarray as xr
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from utils.utils import sshs_category_array
+from utils.train_test_split import train_val_test_split
 
 
 if __name__ == '__main__':
@@ -66,7 +68,7 @@ if __name__ == '__main__':
     # Select the corresponding entries in the datacube
     datacube = datacube.isel(phony_dim_4=data_info.index)
     # Reset the index of data_info so that it matches datacube.isel
-    data_info = data_info.reset_index()
+    data_info = data_info.reset_index(drop=True)
 
     # === DATACUBE PREPROCESSING ===
     # Rename the dimensions
@@ -174,13 +176,55 @@ if __name__ == '__main__':
         data_info = data_info.reset_index(drop=True)
         print(f"Selected {len(data_info['SID'].unique())} storms.")
 
+    # === TRAIN/VAL/TEST SPLIT ===
+    train_idx, val_idx, test_idx = train_val_test_split(data_info)
+    print("Train/val/test split:", f"{len(train_idx)} / {len(val_idx)} / {len(test_idx)}")
+    # Select the corresponding entries in the info
+    train_info = data_info.iloc[train_idx]
+    val_info = data_info.iloc[val_idx]
+    test_info = data_info.iloc[test_idx]
+    # Select the corresponding entries in the datacube
+    train_datacube = datacube.isel(sid_time=train_info.index)
+    val_datacube = datacube.isel(sid_time=val_info.index)
+    test_datacube = datacube.isel(sid_time=test_info.index)
+    # Reset the index of the tabular data, so that it matches that of the datacube
+    train_info = train_info.reset_index(drop=True)
+    val_info = val_info.reset_index(drop=True)
+    test_info = test_info.reset_index(drop=True)
+
+    # === NORMALIZATION ===
+    # Normalize the info and datacube using constants computed on the training set
+    print("Normalizing ...")
+    # Only normalize the numeric columns
+    numeric_df = train_info.select_dtypes(include=[np.number]).copy()
+    numeric_cols = numeric_df.columns
+    info_mean, info_std = numeric_df.mean(), numeric_df.std()
+    train_info[numeric_cols] = (train_info[numeric_cols] - info_mean) / info_std
+    val_info[numeric_cols] = (val_info[numeric_cols] - info_mean) / info_std
+    test_info[numeric_cols] = (test_info[numeric_cols] - info_mean) / info_std
+    datacube_mean = train_datacube.mean(dim=['sid_time', 'h_pixel_offset', 'v_pixel_offset'])
+    datacube_std = train_datacube.std(dim=['sid_time', 'h_pixel_offset', 'v_pixel_offset'])
+    train_datacube = (train_datacube - datacube_mean) / datacube_std
+    val_datacube = (val_datacube - datacube_mean) / datacube_std
+    test_datacube = (test_datacube - datacube_mean) / datacube_std
+
     # === SAVE THE PREPROCESSED DATA ===
     print("Saving the preprocessed data...")
-    # Retrieve the save path for the tabular data and the datacube from the config file
-    _TCIR_INFO_PATH_ = cfg['paths']['tcir_info_preprocessed']
-    _TCIR_DATACUBE_PATH_ = cfg['paths']['tcir_datacube_preprocessed']
-
-    # Save the tabular data
-    data_info.to_csv(_TCIR_INFO_PATH_, index=False)
-    # Save the datacube
-    datacube.to_netcdf(_TCIR_DATACUBE_PATH_)
+    # Retrieve the path to the save directory
+    save_dir = Path(cfg['paths']['tcir_preprocessed_dir'])
+    # Create train/val/test subdirectories if they don't exist
+    for subdir in ['train', 'val', 'test']:
+        subdir_path = save_dir / subdir
+        subdir_path.mkdir(parents=True, exist_ok=True)
+    # Save the data
+    train_datacube.to_netcdf(save_dir / 'train' / 'datacube.nc')
+    val_datacube.to_netcdf(save_dir / 'val' / 'datacube.nc')
+    test_datacube.to_netcdf(save_dir / 'test' / 'datacube.nc')
+    train_info.to_csv(save_dir / 'train' / 'info.csv', index=False)
+    val_info.to_csv(save_dir / 'val' / 'info.csv', index=False)
+    test_info.to_csv(save_dir / 'test' / 'info.csv', index=False)
+    # Save the normalization constants
+    info_mean.to_csv(save_dir / 'info_mean.csv', header=False)
+    info_std.to_csv(save_dir / 'info_std.csv', header=False)
+    datacube_mean.to_netcdf(save_dir / 'datacube_mean.nc')
+    datacube_std.to_netcdf(save_dir / 'datacube_std.nc')

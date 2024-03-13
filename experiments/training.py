@@ -129,9 +129,10 @@ if __name__ == "__main__":
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    train_dataset, val_dataset, train_loader, val_loader = load_dataset(
-        cfg, input_variables, tasks, ["tcir"]
+    train_dataset, train_loader = load_dataset(
+        cfg, input_variables, tasks, ["tcir"], "train"
     )
+    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, ["tcir"], "val")
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
@@ -147,7 +148,7 @@ if __name__ == "__main__":
     # If training from scratch, create a new model
     if experiment_cfg["use-pre-trained-id"] is None:
         model = StormPredictionModel(
-            datacube_shape, num_input_variables, tasks, train_dataset, val_dataset, cfg
+            datacube_shape, num_input_variables, tasks, train_dataset, cfg
         )
     # If fine-tuning, load the model from a previous run
     else:
@@ -167,8 +168,7 @@ if __name__ == "__main__":
             input_datacube_shape=datacube_shape,
             num_input_variables=num_input_variables,
             tabular_tasks=tasks,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
+            dataset=train_dataset,
             cfg=cfg,
         )
 
