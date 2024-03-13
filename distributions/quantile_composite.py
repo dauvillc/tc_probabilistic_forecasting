@@ -101,6 +101,8 @@ class QuantileCompositeDistribution:
         # (i.e. which two quantiles it is between)
         # For every n we want i such that pq[n, i-1] <= y[n, 0] < pq[n, i]
         idx = torch.searchsorted(predicted_params, x.unsqueeze(2), side="right")
+        # Finally: move the probabilities to the same device as the input
+        self.probas = self.probas.to(predicted_params.device)
         return predicted_params, x, idx
 
     def pdf(self, predicted_params, x):
