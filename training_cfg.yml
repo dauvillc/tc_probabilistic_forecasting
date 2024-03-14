@@ -1,5 +1,5 @@
 experiment:
-  name: normal_no_context
+  name: qc
   # Number of past time steps given as input
   past_steps: 4
   # Number of time steps to predict at once
@@ -8,7 +8,10 @@ experiment:
   patch_size: 128
   # Which contextual variables to include: (must be at least [])
   # LAT, LON, HOUR_COS, HOUR_SIN
-  context_variables: []
+  context_variables: ['LAT', 'LON', 'HOUR_COS', 'HOUR_SIN']
+  # Optionally: indicate a minimum SSHS category to train on (from -1 to 5)
+  # If None, no filtering is applied (equivalent to -1).
+  train_min_category: 3
   # Id of a W&B run from which to download the model to fine-tune it
   # If left to None, a new model we trained from scratch
   use-pre-trained-id:
@@ -21,7 +24,7 @@ tasks:
   # - "multivariate_normal"
   vmax:
     output_variables: ['INTENSITY']
-    distribution: normal
+    distribution: qc
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
@@ -37,7 +40,7 @@ training_settings:
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
   # Number of workers for the data loading
-  num_workers: 0
+  num_workers: 27
   # Weight decay
   weight_decay: 0.05
   # Whether to enable data augmentation
@@ -62,7 +65,7 @@ model_hyperparameters:
   # What type of base block to use (either 'cbam' or 'conv')
   base_block: conv
   # Type of global spatial pooling to use ('avg' or 'attention')
-  global_pooling: attention
+  global_pooling: avg
   # Number of convolutional blocks (Each block has 2 Conv layers)
   encoder_depth: 6
   # Number of channels in the first hidden layer
