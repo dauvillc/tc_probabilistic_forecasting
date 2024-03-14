@@ -213,7 +213,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         variables = self.get_task_output_variables(task)
         # Each variable has the form VAR_t, where t is the time step.
         # The constants to use are then those of VAR.
-        variables = [var.split("_")[0] for var in variables]
+        # Note: the variable name can contain a '_' character.
+        variables = ['_'.join(var.split("_")[:-1]) for var in variables]
         means = torch.tensor(self.tabular_means[variables].values, dtype=torch.float32)
         stds = torch.tensor(self.tabular_stds[variables].values, dtype=torch.float32)
         return means, stds
