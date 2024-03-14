@@ -120,7 +120,7 @@ class StormPredictionModel(pl.LightningModule):
         Computes the losses for a single batch (subfunction of training_step
         and validation_step).
         """
-        past_variables, past_datacubes, future_variables, future_datacubes = batch
+        past_variables, past_datacubes, future_variables = batch
         predictions = self.forward(past_variables, past_datacubes)
         # If using a weighted / tilted loss, the loss function should return one value per sample
         # and not the mean over the batch
@@ -173,7 +173,7 @@ class StormPredictionModel(pl.LightningModule):
         total_loss = self.compute_losses(batch, train_or_val="val")
 
         # The rest of the function computes the metrics for each task
-        past_variables, past_datacubes, future_variables, future_datacubes = batch
+        past_variables, past_datacubes, future_variables = batch
         predictions = self.forward(past_variables, past_datacubes)
 
         # Before computing the metrics, we'll denormalize the future values, so that metrics are
@@ -203,7 +203,7 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a prediction step.
         """
-        past_variables, past_datacubes, future_variables, future_datacubes = batch
+        past_variables, past_datacubes, future_variables = batch
         predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions using the task-specific denormalization function
         for task, task_params in self.tabular_tasks.items():

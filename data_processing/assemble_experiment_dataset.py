@@ -10,7 +10,7 @@ from utils.datacube import datacube_to_tensor
 from utils.utils import hours_to_sincos
 
 
-def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks, subset):
+def load_dataset(cfg, input_variables, tabular_tasks, subset):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
@@ -26,8 +26,6 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks, subset):
         mappings containing the task parameters, including:
         - 'output_variables': list of str
             The list of the output variables.
-    datacube_tasks: list of str
-        The list of the output datacubes.
     subset : str
         'train', 'val' or 'test'.
 
@@ -59,12 +57,11 @@ def load_dataset(cfg, input_variables, tabular_tasks, datacube_tasks, subset):
         apply_data_aug = cfg["training_settings"]["data_augmentation"]
     # Create the custom dataset
     dataset = SuccessiveStepsDataset(
+        subset,
         tcir_info,
         input_variables,
         tabular_tasks,
         {"tcir": tcir_datacube},
-        ["tcir"],
-        datacube_tasks,
         info_means,
         info_stds,
         datacube_means,

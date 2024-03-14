@@ -130,9 +130,9 @@ if __name__ == "__main__":
 
     # ====== DATA LOADING ====== #
     train_dataset, train_loader = load_dataset(
-        cfg, input_variables, tasks, ["tcir"], "train"
+        cfg, input_variables, tasks, "train"
     )
-    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, ["tcir"], "val")
+    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val")
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger

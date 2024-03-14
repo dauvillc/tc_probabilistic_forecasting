@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 from torchvision.transforms import v2
 from torchvision import tv_tensors
-from tqdm import trange
+from utils.utils import sshs_category
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
@@ -25,6 +25,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
 
     Parameters
     ----------
+    subset: str
+        "train", "val" or "test".
     trajectories: pandas.DataFrame
         The input time series. Must at least contain the columns "SID", "ISO_TIME", and
         the columns specified in input_columns and output_columns.
@@ -40,10 +42,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         the datacubes themselves. Each datacube must be of shape (N, C, H, W), where N
         is the number of samples, one for each pair (SID, ISO_TIME).
         The datacubes should be already normalized.
-    input_datacubes: list of str
-        Which datacubes to use as input. The names must be keys of datacubes.
-    output_datacubes: list of str
-        Which datacubes to use as output. The names must be keys of datacubes.
     tabular_means: pd.Series
         The means of all variables in "trajectories".
     tabular_stds: pd.Series
@@ -60,12 +58,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
 
     def __init__(
         self,
+        subset,
         trajectories,
         input_columns,
         output_tabular_tasks,
         datacubes,
-        input_datacubes,
-        output_datacubes,
         tabular_means,
         tabular_stds,
         datacube_means,
@@ -77,8 +74,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.input_columns = input_columns
         self.output_tabular_tasks = output_tabular_tasks
         self.datacubes = datacubes
-        self.input_datacubes = input_datacubes
-        self.output_datacubes = output_datacubes
+        self.input_datacubes = list(datacubes.keys())
         self.tabular_means = tabular_means
         self.tabular_stds = tabular_stds
         self.datacube_means = datacube_means
@@ -124,8 +120,24 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # The last T rows of each storm are NaN since there are no future steps.
         self.output_trajectories.dropna(inplace=True)
 
-        # Since we removed the first P-1 rows and the last T rows, we need to retain only the intersection
-        # of the input and output time series' indices.
+        # Optionally, select only the samples which reach a minimum category over the future steps.
+        if (
+            "vmax" in self.output_tabular_tasks
+            and "train_min_category" in cfg["experiment"]
+            and subset == "train"
+        ):
+            min_category = cfg["experiment"]["train_min_category"]
+            # Compute the max intensity of each sample over the future steps.
+            intensities = self.get_sample_intensities()  # (N, T)
+            max_intensities = intensities.max(dim=1).values
+            # Convert the max intensities to categories.
+            max_categories = sshs_category(max_intensities)
+            # Select the samples which reach at least the minimum category.
+            selected_mask = (max_categories >= min_category).numpy()
+            self.output_trajectories = self.output_trajectories[selected_mask]
+
+        # Since we removed different rows from the input and output trajs, we need to retain only the intersection
+        # of their indices.
         indices = self.input_trajectories.index.intersection(self.output_trajectories.index)
         self.input_trajectories = self.input_trajectories.loc[indices]
         self.output_trajectories = self.output_trajectories.loc[indices]
@@ -212,7 +224,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         """
         Returns the idx-th sample of the dataset, as a tuple
-        (input_time_series, input_datacubes, output_time_series, output_datacubes).
+        (input_time_series, input_datacubes, output_time_series).
 
         input_time_series is a Mapping of str to torch.Tensor, where the keys are the input
         variable names and the values are torch.Tensors of shape (batch_size, P, K) where K
@@ -222,8 +234,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         in the task.
 
         input_datacubes is a Mapping of str to torch.Tensor, where the keys are the names of the
-        input datacubes and the values are torch.Tensors of shape (batch_size, C, P, H, W). The same
-        applies to output_datacubes, but the shape of the torch.Tensors is (batch_size, C, T, H, W).
+        input datacubes and the values are torch.Tensors of shape (batch_size, C, P, H, W).
         """
         # Retrieve the input time series.
         input_time_series = {}
@@ -257,19 +268,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             # be applied to it.
             input_datacubes[name] = tv_tensors.Image(datacube)
 
-        # Retrieve the output datacubes.
-        output_datacubes = {}
-        for name in self.output_datacubes:
-            datacube = self.datacubes[name][
-                datacube_index + 1 : datacube_index + 1 + self.future_steps
-            ]
-            datacube = datacube.transpose(1, 0)
-            output_datacubes[name] = tv_tensors.Image(datacube)
+        # Apply the transforms to the input datacubes.
+        input_datacubes = self.transforms(input_datacubes)
 
-        # Apply the same transformations to the input and output datacubes.
-        input_datacubes, output_datacubes = self.transforms(input_datacubes, output_datacubes)
-
-        return input_time_series, input_datacubes, output_time_series, output_datacubes
+        return input_time_series, input_datacubes, output_time_series
 
     def get_task_output_variables(self, task):
         """
@@ -313,14 +315,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         if "vmax" not in self.output_tabular_tasks:
             raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
-        # We'll call __getitem__ for each sample
-        intensities = []
-        print("Retrieving sample intensities")
-        for i in trange(len(self)):
-            _, _, output_time_series, _ = self[i]
-            intensities.append(output_time_series["vmax"])
+        vmax_future_vars = self.get_task_output_variables('vmax')
+        intensities = torch.tensor(self.output_trajectories[vmax_future_vars].values, dtype=torch.float32)
         # Denormalize the intensities
-        intensities = self.denormalize_tabular_target({"vmax": torch.stack(intensities, dim=0)})[
+        intensities = self.denormalize_tabular_target({"vmax": intensities})[
             "vmax"
         ]
         return intensities
