@@ -6,8 +6,8 @@ paths:
   hursat_b1: /scratch/cdauvill/hursat-b1/
   hursat_b1_preprocessed: /scratch/cdauvill/hursat-b1-preprocessed/
   hursat_b1_cache: /scratch/cdauvill/hursat-b1-preprocessed/cache.nc
-  tcir: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
-  tcir_preprocessed: /home/cdauvill/scratch/cdauvill/tcir/preprocessed
+  tcir: /home/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
+  tcir_preprocessed_dir: /home/scratch/cdauvill/tcir/preprocessed
   checkpoints: /home/cdauvill/scratch/checkpoints/
 
 tcir:
