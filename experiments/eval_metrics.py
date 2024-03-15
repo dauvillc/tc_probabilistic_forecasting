@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import torch
+import numpy as np
 from collections import defaultdict
 from utils.wandb import retrieve_wandb_runs
 from utils.utils import matplotlib_markers, sshs_category
@@ -262,10 +263,6 @@ if __name__ == "__main__":
 
     # ==== TIME-STEP WISE METRICS ==== #
     # In this section, we'll plot the metrics for every model, for each time step.
-    # First, we'll check that T is the same for all models.
-    T = configs[args.ids[0]]["experiment"]["future_steps"]
-    for run_id in args.ids:
-        assert configs[run_id]["experiment"]["future_steps"] == T
     # We'll use the same approach as for the SSHS categories.
     for (task_name, metric_name), run_ids in metrics_map.items():
         # Create a figure with a single plot. The X axis will be the time step,
@@ -285,22 +282,30 @@ if __name__ == "__main__":
             metric_value = metric_fn(
                 predictions, task_targets, reduce_mean="none"
             )  # (N, T) or (N,) or (T,)
-            for t in range(T):
+            # Retrieve the predicted time steps. If the model only does forecasting,
+            # the time steps are +6 up to +6 * future_steps
+            # If the model also does estimation, the time steps are -6 * (past_steps - 1) up to +6 * future_steps
+            exp_cfg = configs[run_id]["experiment"]
+            if "perform_estimation" in exp_cfg and exp_cfg["perform_estimation"]:
+                T = np.arange(-6 * (exp_cfg["past_steps"] - 1), 6 * (exp_cfg["future_steps"] + 1), 6)
+            else:
+                T = np.arange(6, 6 * (exp_cfg["future_steps"] + 1), 6)
+            for i, t in enumerate(T):
                 # Get the scores of all samples at time t
                 if metric_value.dim() == 1:
                     if metric_value.shape[0] == T:
                         # Metric that has one value for each time step
                         # Consider it constant over time
-                        values_at_t = [metric_value[t].item()]
+                        values_at_t = [metric_value[i].item()]
                     else:
                         # Metric that has a single value for all time steps, for each sample
                         values_at_t = metric_value.tolist()
                 else:
                     # Metric that has a value for each sample at each time step
-                    values_at_t = metric_value[:, t].tolist()
+                    values_at_t = metric_value[:, i].tolist()
                 # Store the results in long format
                 res_ids += [run_id] * len(values_at_t)
-                res_steps += [t] * len(values_at_t)  # Time steps of 6 hours
+                res_steps += [t] * len(values_at_t)
                 res_values += values_at_t
 
         # Assemble the results in a dataframe
@@ -329,7 +334,7 @@ if __name__ == "__main__":
         )
         ax.set_title(f"{task_name} - {metric_name}")
         ax.set_ylabel(f"{metric_name} - 95% CI")
-        ax.set_xlabel("Lead time (hours)")
+        ax.set_xlabel("Time step (hours)")
         # Save the figure
         fig.savefig(os.path.join(save_folder, f"{task_name}-{metric_name}-lead_time.png"))
         current_run.log({f"{task_name}-{metric_name}-lead_time": wandb.Image(fig)})
