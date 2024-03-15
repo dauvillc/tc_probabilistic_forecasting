@@ -92,7 +92,7 @@ if __name__ == "__main__":
         targets_dir = os.path.join("data", "targets")
         targets = {}
         for task in model_predictions[0].keys():
-            targets[task] = torch.cat([batch_target[task] for _, _, batch_target, _ in val_loader])
+            targets[task] = torch.cat([batch_target[task] for _, _, batch_target in val_loader])
 
         # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
         # Remark: the normalization constants were computed on the training set.

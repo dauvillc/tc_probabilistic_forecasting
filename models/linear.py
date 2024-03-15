@@ -82,7 +82,7 @@ class PredictionHead(nn.Module):
     Implements a prediction head for a given task.
     The prediction head receives as input the latent space produced by the
     common linear module, and outputs a prediction for the given task at
-    each future step.
+    each target step.
 
     Parameters
     ----------
@@ -90,14 +90,14 @@ class PredictionHead(nn.Module):
         The size of the input latent space.
     n_output_vars: int
         The number of predicted variables.
-    future_steps: int
-        The number of future steps to predict.
+    tagret_steps: int
+        The number of time steps to predict.
     """
-    def __init__(self, input_size, n_output_vars, future_steps):
+    def __init__(self, input_size, n_output_vars, target_steps):
         super().__init__()
         self.n_output_vars = n_output_vars
-        self.future_steps = future_steps
-        self.output_size = n_output_vars * future_steps
+        self.target_steps = target_steps
+        self.output_size = n_output_vars * target_steps
         # Fully connected layer
         self.fc = nn.Linear(input_size, self.output_size)
 
@@ -109,13 +109,13 @@ class PredictionHead(nn.Module):
             The latent space produced by the common linear module.
         Returns
         -------
-        torch tensor of dimensions (N, future_steps, n_output_vars)
+        torch tensor of dimensions (N, target_steps, n_output_vars)
             The prediction.
         """
         # Apply the fully connected layer
         prediction = self.fc(latent_space)
         # Reshape the prediction
-        return prediction.reshape(-1, self.future_steps, self.n_output_vars)
+        return prediction.reshape(-1, self.target_steps, self.n_output_vars)
 
 
 class MultivariatePredictionHead(nn.Module):

@@ -13,15 +13,17 @@ from utils.utils import sshs_category
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
     """
-    The class receives a set of time series and returns batches of successive
-    steps of it. The time series can be either tabular data or datacubes.
-    The class receives a set of input time series, a set of input datacubes,
-    a set of output time series and a set of output datacubes.
-    If X is an input time series and Y is an output time series, and P is the
-    number of past steps and T is the number of future steps, the class returns
-    batches of shape (batch_size, P, X.shape[1]) and (batch_size, T, Y.shape[1]).
-    If X is an input datacube and Y is an output datacube, the class returns
-    batches of shape (batch_size, P, *X.shape[1:]) and (batch_size, T, *Y.shape[1:]).
+    Given:
+    - A Datacube X of shape (N, C, H, W), where N is the number of samples, C is the number of channels,
+        H is the height and W is the width.
+    - A tabular dataset S of storm trajectories of shape (N, K), where K is the number of variables.
+    - A tasks dictionary, which maps task names to variables from S to predict.
+    Returns elements of the form (X_i, S_i, Y_i), where:
+    - X_i is a tensor of shape (P, C, H, W), where P is the number of past steps.
+    - S_i is a tensor of shape (P, V), and contains the contextual information for X_i.
+    - Y_i is a tensor of shape (T, V'), and contains the targets to predict.
+        If the experiment also performs estimation, Y_i is of shape (P + T, V') and also
+        contains the targets for the past steps.
 
     Parameters
     ----------
@@ -82,6 +84,12 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.past_steps = cfg["experiment"]["past_steps"]
         self.future_steps = cfg["experiment"]["future_steps"]
         self.random_rotations = random_rotations
+        # Potential estimation task
+        self.perform_estimation = (
+            "perform_estimation" in cfg["experiment"] and cfg["experiment"]["perform_estimation"]
+        )
+        self.y_min_step = -self.past_steps + 1 if self.perform_estimation else 1
+        self.target_steps = self.future_steps + self.past_steps if self.perform_estimation else self.future_steps
         # The output variables are the variables that are included in at least one
         # tabular task.
         self.output_columns = set()
@@ -115,12 +123,12 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # the columns V_{1}, ..., V_{T}.
         self.output_trajectories = pd.DataFrame()
         for var in self.output_columns + ["SID", "ISO_TIME"]:
-            for i in range(1, self.future_steps + 1):
+            for i in range(self.y_min_step, self.future_steps + 1):
                 self.output_trajectories[f"{var}_{i}"] = grouped_trajs[var].shift(-i)
         # The last T rows of each storm are NaN since there are no future steps.
         self.output_trajectories.dropna(inplace=True)
 
-        # Optionally, select only the samples which reach a minimum category over the future steps.
+        # Optionally, select only the samples which reach a minimum category over the target steps.
         if (
             "vmax" in self.output_tabular_tasks
             and "train_min_category" in cfg["experiment"]
@@ -152,7 +160,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # We can now remove the columns SID_t and ISO_TIME_t from the input and output time series.
         for i in range(-self.past_steps + 1, 1):
             self.input_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
-        for i in range(1, self.future_steps + 1):
+        for i in range(self.y_min_step, self.future_steps + 1):
             self.output_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
 
         if self.random_rotations:
@@ -214,7 +222,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Each variable has the form VAR_t, where t is the time step.
         # The constants to use are then those of VAR.
         # Note: the variable name can contain a '_' character.
-        variables = ['_'.join(var.split("_")[:-1]) for var in variables]
+        variables = ["_".join(var.split("_")[:-1]) for var in variables]
         means = torch.tensor(self.tabular_means[variables].values, dtype=torch.float32)
         stds = torch.tensor(self.tabular_stds[variables].values, dtype=torch.float32)
         return means, stds
@@ -224,18 +232,18 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         """
-        Returns the idx-th sample of the dataset, as a tuple
-        (input_time_series, input_datacubes, output_time_series).
-
-        input_time_series is a Mapping of str to torch.Tensor, where the keys are the input
-        variable names and the values are torch.Tensors of shape (batch_size, P, K) where K
-        is the number of variables in the input time series.
-        output_time_series is a Mapping of str to torch.Tensor, where the keys are the task names
-        and the values are torch.Tensors of shape (batch_size, T, K') where K' is the number of variables
-        in the task.
-
-        input_datacubes is a Mapping of str to torch.Tensor, where the keys are the names of the
-        input datacubes and the values are torch.Tensors of shape (batch_size, C, P, H, W).
+        Returns
+        -------
+        - input_time_series: Mapping of str to torch.Tensor
+            Contextual variables at the past time steps.
+            input_time_series[var] is a tensor of shape (P,).
+        - input_datacubes: Mapping of str to torch.Tensor
+            Input datacubes at the past time steps.
+            input_datacubes[name] is a tensor of shape (C, P, H, W).
+        - output_time_series: Mapping of str to torch.Tensor
+            Output variables at the future time steps, or at the past and future time steps if
+            estimation is performed.
+            output_time_series[task] is a tensor of shape (T,) or (P + T,).
         """
         # Retrieve the input time series.
         input_time_series = {}
@@ -278,11 +286,14 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         For a given task name, returns the list of the output variables
         (VAR1_1, ..., VAR1_T, ..., VARK_1, ..., VARK_T).
+        If estimation is performed, returns
+        (VAR1_-P+1, ..., VAR1_0, ..., VAR1_1, ..., VAR1_T, ...,
+         VARK_-P+1, ..., VARK_0, ..., VARK_1, ..., VARK_T).
         """
         return [
             f"{var}_{i}"
             for var in self.output_tabular_tasks[task]["output_variables"]
-            for i in range(1, self.future_steps + 1)
+            for i in range(self.y_min_step, self.future_steps + 1)
         ]
 
     def target_support(self, variable):
@@ -316,10 +327,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         if "vmax" not in self.output_tabular_tasks:
             raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
-        vmax_future_vars = self.get_task_output_variables('vmax')
-        intensities = torch.tensor(self.output_trajectories[vmax_future_vars].values, dtype=torch.float32)
+        vmax_future_vars = self.get_task_output_variables("vmax")
+        intensities = torch.tensor(
+            self.output_trajectories[vmax_future_vars].values, dtype=torch.float32
+        )
         # Denormalize the intensities
-        intensities = self.denormalize_tabular_target({"vmax": intensities})[
-            "vmax"
-        ]
+        intensities = self.denormalize_tabular_target({"vmax": intensities})["vmax"]
         return intensities

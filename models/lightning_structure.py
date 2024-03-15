@@ -30,8 +30,6 @@ class StormPredictionModel(pl.LightningModule):
         The shape of the input datacube.
     num_input_variables: int
         The number of input variables.
-    future_steps: int
-        The number of future steps to predict.
     tabular_tasks: Mapping of str to Mapping
         The tasks whose targets are vectors, with the keys being the task names and the values
         being the task parameters, including:
@@ -69,7 +67,10 @@ class StormPredictionModel(pl.LightningModule):
             "loss_tilting"
         ] not in [None, 0]
         past_steps = cfg["experiment"]["past_steps"]
-        future_steps = cfg["experiment"]["future_steps"]
+        # Future steps: the number of steps T to forecast
+        # Target steps: the number of steps to predict:
+        # T is the model only forecasts the future steps, P+T is the model also estimates the past.
+        self.future_steps, self.target_steps = self.dataset.future_steps, self.dataset.target_steps
 
         # Create the encoder
         self.encoder = Encoder3d(
@@ -84,7 +85,7 @@ class StormPredictionModel(pl.LightningModule):
         # Create the common linear module
         self.common_linear_model = CommonLinearModule(
             self.encoder.output_shape,
-            future_steps,
+            self.target_steps,
             num_input_variables * past_steps,
             cfg["model_hyperparameters"]["clm_reduction_factor"],
         )
@@ -102,7 +103,7 @@ class StormPredictionModel(pl.LightningModule):
                 self.prediction_heads[task] = PredictionHead(
                     self.common_linear_model.output_size,
                     task_params["output_size"],
-                    future_steps,
+                    self.target_steps,
                 )
 
         # Create the WeightedLoss object if needed
@@ -120,7 +121,7 @@ class StormPredictionModel(pl.LightningModule):
         Computes the losses for a single batch (subfunction of training_step
         and validation_step).
         """
-        past_variables, past_datacubes, future_variables = batch
+        past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
         # If using a weighted / tilted loss, the loss function should return one value per sample
         # and not the mean over the batch
@@ -129,11 +130,11 @@ class StormPredictionModel(pl.LightningModule):
         losses = {}
         for task, task_params in self.tabular_tasks.items():
             losses[task] = task_params["distrib_obj"].loss_function(
-                predictions[task], future_variables[task], reduce_mean=reduce_mean
+                predictions[task], targets[task], reduce_mean=reduce_mean
             )
             # If the weighted loss is used, apply the weights
             if self.use_weighted_loss:
-                losses[task] = self.weighted_loss(losses[task], future_variables["vmax"])
+                losses[task] = self.weighted_loss(losses[task], targets["vmax"])
             # Same for the tilted loss
             if self.use_tilted_loss:
                 losses[task] = self.tilted_loss(losses[task])
@@ -173,12 +174,12 @@ class StormPredictionModel(pl.LightningModule):
         total_loss = self.compute_losses(batch, train_or_val="val")
 
         # The rest of the function computes the metrics for each task
-        past_variables, past_datacubes, future_variables = batch
+        past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
 
         # Before computing the metrics, we'll denormalize the future values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
-        future_variables = self.dataset.denormalize_tabular_target(future_variables)
+        targets = self.dataset.denormalize_tabular_target(targets)
 
         # Compute the metrics for each task
         for task, task_params in self.tabular_tasks.items():
@@ -189,7 +190,7 @@ class StormPredictionModel(pl.LightningModule):
             )
             for metric_name, metric in task_params["distrib_obj"].metrics.items():
                 # Compute the metric in the original scale
-                metric_value = metric(predictions[task], future_variables[task])
+                metric_value = metric(predictions[task], targets[task])
                 self.log(
                     f"val_{metric_name}_{task}",
                     metric_value,
@@ -203,7 +204,7 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a prediction step.
         """
-        past_variables, past_datacubes, future_variables = batch
+        past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions using the task-specific denormalization function
         for task, task_params in self.tabular_tasks.items():
