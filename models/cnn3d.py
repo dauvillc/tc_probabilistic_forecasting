@@ -114,7 +114,7 @@ class DownsamplingBlock3D(nn.Module):
 
     def forward(self, x):
         x = torch.selu(self.entry_conv(x))
-        x = self.base_block(x) + x
+        x = self.base_block(x)
         x = torch.selu(self.final_conv(x))
         x = self.batch_norm(x)
         return x
