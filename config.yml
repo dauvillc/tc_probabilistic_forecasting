@@ -7,8 +7,7 @@ paths:
   hursat_b1_preprocessed: /scratch/cdauvill/hursat-b1-preprocessed/
   hursat_b1_cache: /scratch/cdauvill/hursat-b1-preprocessed/cache.nc
   tcir: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
-  tcir_info_preprocessed: /home/cdauvill/scratch/cdauvill/tcir/tcir_info_preprocessed_cat3.csv
-  tcir_datacube_preprocessed: /home/cdauvill/scratch/cdauvill/tcir/tcir_datacube_preprocessed_cat3.nc
+  tcir_preprocessed: /home/cdauvill/scratch/cdauvill/tcir/preprocessed
   checkpoints: /home/cdauvill/scratch/checkpoints/
 
 tcir:
@@ -16,7 +15,7 @@ tcir:
   subsample: false  # true / false
   subsample_fraction: 0.1
   # Minimum SSHS category to include
-  min_category: 3
+  min_category: -1.
 
 era5:
   # Variables to include in the reanalysis data
