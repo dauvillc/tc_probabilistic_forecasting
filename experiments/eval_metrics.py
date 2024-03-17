@@ -21,7 +21,7 @@ import numpy as np
 from collections import defaultdict
 from utils.wandb import retrieve_wandb_runs
 from utils.utils import matplotlib_markers, sshs_category
-from utils.io import load_predictions, load_targets
+from utils.io import load_predictions_and_targets
 
 
 if __name__ == "__main__":
@@ -101,8 +101,7 @@ if __name__ == "__main__":
     colors = {run_id: cmap(k) for k, run_id in enumerate(args.ids)}
 
     # ======== LOAD THE PREDICTIONS AND TARGETS ======== #
-    all_runs_predictions = load_predictions(args.ids)
-    targets = load_targets()
+    all_runs_predictions, all_runs_targets = load_predictions_and_targets(args.ids)
 
     # ======== GENERAL METRICS ======== #
     # In this section we'll plot the metrics for every task, over the whole dataset.
@@ -142,7 +141,7 @@ if __name__ == "__main__":
         for k, run_id in enumerate(run_ids):
             # Retrieve the predictions and targets for the run
             predictions = all_runs_predictions[run_id][task_name]
-            task_targets = targets[task_name]
+            task_targets = all_runs_targets[run_id][task_name]
             # Compute the metric without reducing the result to its mean
             metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
             metric_value = metric_fn(predictions, task_targets, reduce_mean="time")
@@ -175,9 +174,6 @@ if __name__ == "__main__":
     # In this section, we'll plot the metrics for every model, for each category of the SSHS.
     # Since we are forecasting multiple time steps ahead, we'll use the maximum SSHS category
     # reached over all time steps.
-    # First, we can compute the mask that indicates the SSHS category for each sample.
-    target_sshs = sshs_category(targets["vmax"])
-    target_sshs, _ = target_sshs.max(dim=1)
     # Now, we'll evaluate every (task, metric) pair.
     for (task_name, metric_name), run_ids in metrics_map.items():
         # Create a figure with a single plot. The X axis will be the SSHS category,
@@ -190,7 +186,11 @@ if __name__ == "__main__":
         for k, run_id in enumerate(run_ids):
             # Retrieve the predictions and targets for the run
             predictions = all_runs_predictions[run_id][task_name]
+            targets = all_runs_targets[run_id]
             task_targets = targets[task_name]
+            # First, we can compute the mask that indicates the SSHS category for each sample.
+            target_sshs = sshs_category(targets["vmax"])
+            target_sshs, _ = target_sshs.max(dim=1)
             # Retrieve the metric function
             metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]
             for category in range(-1, 6):
@@ -275,6 +275,7 @@ if __name__ == "__main__":
         for k, run_id in enumerate(run_ids):
             # Retrieve the predictions and targets for the run
             predictions = all_runs_predictions[run_id][task_name]
+            targets = all_runs_targets[run_id]
             task_targets = targets[task_name]
             # Retrieve the metric function
             metric_fn = all_runs_tasks[run_id][task_name]["distrib_obj"].metrics[metric_name]

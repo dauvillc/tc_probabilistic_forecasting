@@ -3,10 +3,10 @@ Implements functions to manage data saving and loading.
 """
 import os
 import torch
+from pathlib import Path
 
 
-_PREDS_DIR_ = os.path.join('data', 'predictions')
-_TARGETS_DIR_ = os.path.join('data', 'targets')
+_PREDS_DIR_ = Path('data') / 'predictions'
 
 
 def write_tensors_dict(tensors_dict, save_dir):
@@ -48,9 +48,9 @@ def load_tensors_dict(load_dir):
     return tensors_dict
 
 
-def load_predictions(run_ids):
+def load_predictions_and_targets(run_ids):
     """
-    Loads the predictions of multiple models at once.
+    Loads the predictions and corresponding targets of multiple models at once.
     The predictions must have been already computed and saved
     via make_predictions.py .
 
@@ -64,20 +64,11 @@ def load_predictions(run_ids):
     predictions: Mapping str -> (Mapping str -> torch.Tensor)
         Mapping from run id to a dictionary of predictions, which maps
         a task name to a tensor of predictions.
+    targets: Mapping str -> (Mapping str -> torch.Tensor)
+        Target values for each task, in the same format as predictions.
     """
-    predictions = {}
+    predictions, targets = {}, {}
     for run_id in run_ids:
-        predictions[run_id] = load_tensors_dict(os.path.join(_PREDS_DIR_, run_id))
-    return predictions
-
-
-def load_targets():
-    """
-    Loads the targets of all tasks.
-
-    Returns
-    -------
-    targets: Mapping str -> torch.Tensor
-        Mapping from task name to the tensor of targets.
-    """
-    return load_tensors_dict(_TARGETS_DIR_)
+        predictions[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "predictions")
+        targets[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "targets")
+    return predictions, targets

@@ -25,13 +25,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "-w", "--workers", type=int, default=4, help="Number of workers to use for data loading."
     )
-    parser.add_argument("--save_targets", action="store_true", help="Whether to save the targets.")
     args = parser.parse_args()
     run_id = args.run_id
 
     # Create a folder to store the predictions
-    save_dir = os.path.join("data", "predictions", run_id)
+    save_path = Path("data/predictions") / run_id
+    save_dir = save_path / "predictions"
     os.makedirs(save_dir, exist_ok=True)
+    # Create a folder to store the targets
+    targets_dir = save_path / "targets"
+    os.makedirs(targets_dir, exist_ok=True)
 
     # Retrieve the run config from W&B
     runs, cfgs, tasks = retrieve_wandb_runs([run_id])
@@ -85,19 +88,16 @@ if __name__ == "__main__":
     # Save the predictions
     write_tensors_dict(predictions, save_dir)
 
-    # Save the targets if requested
-    if args.save_targets:
-        print("Saving targets...")
-        # Create a folder to store the targets
-        targets_dir = os.path.join("data", "targets")
-        targets = {}
-        for task in model_predictions[0].keys():
-            targets[task] = torch.cat([batch_target[task] for _, _, batch_target in val_loader])
+    # Save the targets
+    print("Saving targets...")
+    targets = {}
+    for task in model_predictions[0].keys():
+        targets[task] = torch.cat([batch_target[task] for _, _, batch_target in val_loader])
 
-        # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
-        # Remark: the normalization constants were computed on the training set.
-        targets = val_dataset.denormalize_tabular_target(targets)
-        write_tensors_dict(
-            targets,
-            targets_dir,
-        )
+    # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
+    # Remark: the normalization constants were computed on the training set.
+    targets = val_dataset.denormalize_tabular_target(targets)
+    write_tensors_dict(
+        targets,
+        targets_dir,
+    )
