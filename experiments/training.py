@@ -48,7 +48,7 @@ def create_output_distrib(distrib_name, tasks, cfg):
         # code for deterministic and probabilistic models
         distribution = DeterministicDistribution()
     elif distrib_name == "multivariate_normal":
-        distribution = MultivariateNormal(cfg["experiment"]["future_steps"])
+        distribution = MultivariateNormal(len(cfg["experiment"]["target_steps"]))
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution
@@ -105,10 +105,6 @@ if __name__ == "__main__":
         experiment_cfg = cfg["experiment"]
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
-    past_steps, future_steps = (
-        experiment_cfg["past_steps"],
-        experiment_cfg["future_steps"],
-    )
     # Retrieve the input variables
     input_variables = experiment_cfg["context_variables"]
 

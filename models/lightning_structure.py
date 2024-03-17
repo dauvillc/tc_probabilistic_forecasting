@@ -67,10 +67,7 @@ class StormPredictionModel(pl.LightningModule):
             "loss_tilting"
         ] not in [None, 0]
         past_steps = cfg["experiment"]["past_steps"]
-        # Future steps: the number of steps T to forecast
-        # Target steps: the number of steps to predict:
-        # T is the model only forecasts the future steps, P+T is the model also estimates the past.
-        self.future_steps, self.target_steps = self.dataset.future_steps, self.dataset.target_steps
+        self.target_steps = cfg["experiment"]["target_steps"]
 
         # Create the encoder
         self.encoder = Encoder3d(
@@ -85,7 +82,7 @@ class StormPredictionModel(pl.LightningModule):
         # Create the common linear module
         self.common_linear_model = CommonLinearModule(
             self.encoder.output_shape,
-            self.target_steps,
+            len(self.target_steps),
             num_input_variables * past_steps,
             cfg["model_hyperparameters"]["clm_reduction_factor"],
         )
@@ -103,7 +100,7 @@ class StormPredictionModel(pl.LightningModule):
                 self.prediction_heads[task] = PredictionHead(
                     self.common_linear_model.output_size,
                     task_params["output_size"],
-                    self.target_steps,
+                    len(self.target_steps),
                 )
 
         # Create the WeightedLoss object if needed
@@ -177,7 +174,7 @@ class StormPredictionModel(pl.LightningModule):
         past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
 
-        # Before computing the metrics, we'll denormalize the future values, so that metrics are
+        # Before computing the metrics, we'll denormalize the target values, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
         targets = self.dataset.denormalize_tabular_target(targets)
 

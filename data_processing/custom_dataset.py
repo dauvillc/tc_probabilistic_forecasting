@@ -22,8 +22,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
     - X_i is a tensor of shape (P, C, H, W), where P is the number of past steps.
     - S_i is a tensor of shape (P, V), and contains the contextual information for X_i.
     - Y_i is a tensor of shape (T, V'), and contains the targets to predict.
-        If the experiment also performs estimation, Y_i is of shape (P + T, V') and also
-        contains the targets for the past steps.
 
     Parameters
     ----------
@@ -82,14 +80,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.datacube_means = datacube_means
         self.datacube_stds = datacube_stds
         self.past_steps = cfg["experiment"]["past_steps"]
-        self.future_steps = cfg["experiment"]["future_steps"]
+        self.target_steps = cfg["experiment"]["target_steps"]
         self.random_rotations = random_rotations
-        # Potential estimation task
-        self.perform_estimation = (
-            "perform_estimation" in cfg["experiment"] and cfg["experiment"]["perform_estimation"]
-        )
-        self.y_min_step = -self.past_steps + 1 if self.perform_estimation else 1
-        self.target_steps = self.future_steps + self.past_steps if self.perform_estimation else self.future_steps
         # The output variables are the variables that are included in at least one
         # tabular task.
         self.output_columns = set()
@@ -117,16 +109,16 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             for i in range(self.past_steps):
                 self.input_trajectories[f"{var}_{-i}"] = grouped_trajs[var].shift(i)
         # The first P-1 rows of each storm are NaN since there are no previous steps.
-        self.input_trajectories.dropna(inplace=True)
+        self.input_trajectories.dropna(inplace=True, axis="index")
 
-        # Create a DataFrame for the output time series. For each output variable V_t, it includes
-        # the columns V_{1}, ..., V_{T}.
+        # Create a DataFrame for the output time series. For each output variable V, for each
+        # target time step t, create the column V_t.
         self.output_trajectories = pd.DataFrame()
         for var in self.output_columns + ["SID", "ISO_TIME"]:
-            for i in range(self.y_min_step, self.future_steps + 1):
-                self.output_trajectories[f"{var}_{i}"] = grouped_trajs[var].shift(-i)
-        # The last T rows of each storm are NaN since there are no future steps.
-        self.output_trajectories.dropna(inplace=True)
+            for t in self.target_steps:
+                self.output_trajectories[f"{var}_{t}"] = grouped_trajs[var].shift(-t)
+        # Since we shifted the columns, some rows contain NaNs.
+        self.output_trajectories.dropna(inplace=True, axis="index")
 
         # Optionally, select only the samples which reach a minimum category over the target steps.
         if (
@@ -135,7 +127,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             and subset == "train"
         ):
             min_category = cfg["experiment"]["train_min_category"]
-            # Compute the max intensity of each sample over the future steps.
+            # Compute the max intensity of each sample over the target steps.
             intensities = self.get_sample_intensities()  # (N, T)
             max_intensities = intensities.max(dim=1).values
             # Convert the max intensities to categories.
@@ -150,18 +142,15 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.input_trajectories = self.input_trajectories.loc[indices]
         self.output_trajectories = self.output_trajectories.loc[indices]
         self.trajectory_indices = indices
-        # Remark: at this point, the indices of self.input_trajectories and self.output_trajectories
+        # At this point, there are gaps in the indices of the input_trajectories and output_trajectories.
+        # However we only added columns to those dfs and removed rows, but never modified its Index.
+        # Thus, the indices of self.input_trajectories and self.output_trajectories
         # are the same and match the indices of the datacubes, meaning that self.input_trajectories[i]
         # refers to the same storm and time as datacube[i] for each datacube.
-        # However, the trajectories' indices have gaps at the first P rows and the last T rows of each storm.
-        # These gaps are not present in the datacubes' indices, on purpose: if input_trajectories[i] refers to
-        # a storm at time t, then datacube[i - P + 1] refers to the same storm at time t - P + 1, and datacube[i + T]
-        # refers to the same storm at time t + T.
-        # We can now remove the columns SID_t and ISO_TIME_t from the input and output time series.
-        for i in range(-self.past_steps + 1, 1):
-            self.input_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
-        for i in range(self.y_min_step, self.future_steps + 1):
-            self.output_trajectories.drop(columns=[f"SID_{i}", f"ISO_TIME_{i}"], inplace=True)
+        for t in range(-self.past_steps + 1, 1):
+            self.input_trajectories.drop(columns=[f"SID_{t}", f"ISO_TIME_{t}"], inplace=True)
+        for t in self.target_steps:
+            self.output_trajectories.drop(columns=[f"SID_{t}", f"ISO_TIME_{t}"], inplace=True)
 
         if self.random_rotations:
             # Create the random transformations to apply to the datacubes.
@@ -241,9 +230,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             Input datacubes at the past time steps.
             input_datacubes[name] is a tensor of shape (C, P, H, W).
         - output_time_series: Mapping of str to torch.Tensor
-            Output variables at the future time steps, or at the past and future time steps if
-            estimation is performed.
-            output_time_series[task] is a tensor of shape (T,) or (P + T,).
+            Target variables at the target time steps.
+            output_time_series[task] is a tensor of shape (T,).
         """
         # Retrieve the input time series.
         input_time_series = {}
@@ -284,16 +272,13 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
 
     def get_task_output_variables(self, task):
         """
-        For a given task name, returns the list of the output variables
-        (VAR1_1, ..., VAR1_T, ..., VARK_1, ..., VARK_T).
-        If estimation is performed, returns
-        (VAR1_-P+1, ..., VAR1_0, ..., VAR1_1, ..., VAR1_T, ...,
-         VARK_-P+1, ..., VARK_0, ..., VARK_1, ..., VARK_T).
+        For a given task name, returns the list of the output variables:
+        V_t for every t in target_steps for every V in the task's output_variables.
         """
         return [
-            f"{var}_{i}"
+            f"{var}_{t}"
             for var in self.output_tabular_tasks[task]["output_variables"]
-            for i in range(self.y_min_step, self.future_steps + 1)
+            for t in self.target_steps
         ]
 
     def target_support(self, variable):
@@ -327,9 +312,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         if "vmax" not in self.output_tabular_tasks:
             raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
-        vmax_future_vars = self.get_task_output_variables("vmax")
+        vmax_target = self.get_task_output_variables("vmax")
         intensities = torch.tensor(
-            self.output_trajectories[vmax_future_vars].values, dtype=torch.float32
+            self.output_trajectories[vmax_target].values, dtype=torch.float32
         )
         # Denormalize the intensities
         intensities = self.denormalize_tabular_target({"vmax": intensities})["vmax"]
