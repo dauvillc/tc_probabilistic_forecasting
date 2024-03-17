@@ -32,6 +32,14 @@ def retrieve_wandb_runs(run_ids):
         runs[run_id] = run
         configs[run_id] = run.config
 
+        # Backward compatibility: replace the "future_steps" key by
+        # "target_steps":
+        exp_cfg = configs[run_id]['experiment']
+        if 'future_steps' in exp_cfg:
+            exp_cfg['target_steps'] = [t for t in range(1, exp_cfg['future_steps'] + 1)]
+            if 'perform_estimation' in exp_cfg:
+                exp_cfg['target_steps'] += [-t for t in range(0, exp_cfg['past_steps'])]
+
         # Retrieve the tasks performed by the run
         tasks[run_id] = create_tasks(configs[run_id])
     return runs, configs, tasks

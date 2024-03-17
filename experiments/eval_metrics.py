@@ -283,14 +283,9 @@ if __name__ == "__main__":
             metric_value = metric_fn(
                 predictions, task_targets, reduce_mean="none"
             )  # (N, T) or (N,) or (T,)
-            # Retrieve the predicted time steps. If the model only does forecasting,
-            # the time steps are +6 up to +6 * future_steps
-            # If the model also does estimation, the time steps are -6 * (past_steps - 1) up to +6 * future_steps
+            # Retrieve the predicted time steps.
             exp_cfg = configs[run_id]["experiment"]
-            if "perform_estimation" in exp_cfg and exp_cfg["perform_estimation"]:
-                T = np.arange(-6 * (exp_cfg["past_steps"] - 1), 6 * (exp_cfg["future_steps"] + 1), 6)
-            else:
-                T = np.arange(6, 6 * (exp_cfg["future_steps"] + 1), 6)
+            T = np.array(exp_cfg["target_steps"]) * 6 # 6h time steps
             for i, t in enumerate(T):
                 # Get the scores of all samples at time t
                 if metric_value.dim() == 1:
