@@ -99,6 +99,13 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset):
                 persistent_workers=persistent_workers,
             )
     else:
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        # Validation and test sets - no data aug, no shuffling
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            persistent_workers=persistent_workers,
+        )
 
     return dataset, loader
