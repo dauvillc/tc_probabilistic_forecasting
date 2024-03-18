@@ -1,12 +1,10 @@
 experiment:
-  name: normal_estim
+  name: test_target_steps
   # Number of past time steps given as input
   past_steps: 4
-  # Number of time steps to predict at once
-  future_steps: 4
-  # Whether to also estimate the targets at the past time steps
-  # (true / false)
-  perform_estimation: true
+  # List of the target time steps, as indices, e.g.
+  # [0, 2] means +0h and +12h.
+  target_steps: [0, 2]
   # Size of the input and output patches, in pixels (resolution=0.07°)
   patch_size: 128
   # Which contextual variables to include: (must be at least [])
