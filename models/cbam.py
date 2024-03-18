@@ -40,9 +40,9 @@ class ChannelAttentionModule(nn.Module):
         return torch.sigmoid(avg_out + max_out)
 
 
-class SpatialAttentionModule(nn.Module):
+class SpatioTemporalAttentionModule(nn.Module):
     """
-    Spatial Attention Module for 3D data.
+    Spatial and temporal  Attention Module for 3D data.
 
     Parameters
     ----------
@@ -55,8 +55,8 @@ class SpatialAttentionModule(nn.Module):
         self.conv = nn.Conv3d(
             2,
             1,
-            (1, kernel_size, kernel_size),
-            padding=(0, kernel_size // 2, kernel_size // 2),
+            (kernel_size, kernel_size, kernel_size),
+            padding="same",
             bias=False,
         )
 
@@ -86,7 +86,7 @@ class CBAM3D(nn.Module):
     def __init__(self, in_channels, reduction=2, kernel_size=7):
         super().__init__()
         self.channel_attention = ChannelAttentionModule(in_channels, reduction)
-        self.spatial_attention = SpatialAttentionModule(kernel_size)
+        self.spatial_attention = SpatioTemporalAttentionModule(kernel_size)
 
     def forward(self, x):
         x = self.channel_attention(x) * x
