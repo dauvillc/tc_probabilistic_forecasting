@@ -42,6 +42,8 @@ class BasicCNNBlock3D(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size):
         super().__init__()
+        self.kernel_size = kernel_size
+        self.out_channels = out_channels
         # Convolution
         self.conv = nn.Conv3d(
             in_channels,
@@ -62,10 +64,10 @@ class BasicCNNBlock3D(nn.Module):
 
         Parameters
         ----------
-        input_size : tuple (int, int, int)
-            Size of the input under the form (D, H, W).
+        input_size : tuple (int, int, int, int)
+            Size of the input under the form (C, D, H, W).
         """
-        return input_size
+        return (self.out_channels, *input_size[1:])
 
 
 class DownsamplingBlock3D(nn.Module):
@@ -87,6 +89,7 @@ class DownsamplingBlock3D(nn.Module):
     def __init__(self, in_channels, out_channels, base_block, kernel_size):
         super().__init__()
         self.kernel_size = kernel_size
+        self.out_channels = out_channels
         # Entry convolution. Different depth layers are treated independently.
         self.entry_conv = nn.Conv3d(
             in_channels,
@@ -125,14 +128,14 @@ class DownsamplingBlock3D(nn.Module):
 
         Parameters
         ----------
-        input_size : tuple (int, int, int)
-            Size of the input under the form (D, H, W).
+        input_size : tuple (int, int, int, int)
+            Size of the input under the form (C, D, H, W).
         """
-        d, h, w = self.base_block.output_size(input_size)
+        _, d, h, w = self.base_block.output_size(input_size)
         d = conv_layer_output_size(d, self.kernel_size[0], padding=0, stride=1)
         h = conv_layer_output_size(h, self.kernel_size[1], padding=1, stride=2)
         w = conv_layer_output_size(w, self.kernel_size[2], padding=1, stride=2)
-        return (d, h, w)
+        return (self.out_channels, d, h, w)
 
 
 class UpsampleConvBlock3D(nn.Module):

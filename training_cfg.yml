@@ -1,5 +1,5 @@
 experiment:
-  name: test_target_steps
+  name: normal_new_arch
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -25,7 +25,7 @@ tasks:
   # - "multivariate_normal"
   vmax:
     output_variables: ['INTENSITY']
-    distribution: normal
+    distribution: deterministic
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
@@ -63,14 +63,12 @@ training_settings:
   # Optionally, specify a single task to train on
   trained_task:
 model_hyperparameters:
-  # What type of base block to use (either 'cbam' or 'conv')
-  base_block: conv
-  # Type of global spatial pooling to use ('avg' or 'attention')
-  global_pooling: attention
-  # Number of convolutional blocks (Each block has 2 Conv layers)
-  encoder_depth: 6
-  # Number of channels in the first hidden layer
-  encoder_channels: 8
-  # Reduction factor in the Common Linear Module
-  clm_reduction_factor: 64
-
+  spatial_encoder:
+    # What type of base block to use (either 'cbam' or 'conv')
+    base_block: conv
+    n_blocks: 3
+    base_channels: 8
+  temporal_encoder:
+    n_blocks: 3
+  prediction_head:
+    reduction_factor: 128

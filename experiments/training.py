@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # If training from scratch, create a new model
     if experiment_cfg["use-pre-trained-id"] is None:
         model = StormPredictionModel(
-            datacube_shape, num_input_variables, tasks, train_dataset, cfg
+            datacube_shape, tasks, train_dataset, cfg
         )
     # If fine-tuning, load the model from a previous run
     else:
@@ -162,7 +162,6 @@ if __name__ == "__main__":
         model = StormPredictionModel.load_from_checkpoint(
             checkpoint,
             input_datacube_shape=datacube_shape,
-            num_input_variables=num_input_variables,
             tabular_tasks=tasks,
             dataset=train_dataset,
             cfg=cfg,

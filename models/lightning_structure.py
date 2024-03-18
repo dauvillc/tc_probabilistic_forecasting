@@ -5,10 +5,9 @@ Implements the training and evaluation tools using the Lightning framework.
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from models.encoder import Encoder3d
-from models.linear import CommonLinearModule, PredictionHead, MultivariatePredictionHead
-from loss_functions.weighted_loss import WeightedLoss
-from loss_functions.tilted_loss import TiltedLoss
+from models.spatial_encoder import SpatialEncoder
+from models.temporal_encoder import TemporalEncoder
+from models.linear import PredictionHead, MultivariatePredictionHead
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -48,7 +47,6 @@ class StormPredictionModel(pl.LightningModule):
     def __init__(
         self,
         input_datacube_shape,
-        num_input_variables,
         tabular_tasks,
         dataset,
         cfg,
@@ -59,7 +57,6 @@ class StormPredictionModel(pl.LightningModule):
         self.model_cfg = cfg["model_hyperparameters"]
         self.training_cfg = cfg["training_settings"]
         self.input_datacube_shape = input_datacube_shape
-        self.num_input_variables = num_input_variables
         self.use_weighted_loss = (
             "use_weighted_loss" in self.training_cfg and self.training_cfg["use_weighted_loss"]
         )
@@ -68,50 +65,51 @@ class StormPredictionModel(pl.LightningModule):
         ] not in [None, 0]
         past_steps = cfg["experiment"]["past_steps"]
         self.target_steps = cfg["experiment"]["target_steps"]
+        self.patch_size = cfg["experiment"]["patch_size"]
+        C, P, H, W = input_datacube_shape
 
-        # Create the encoder
-        self.encoder = Encoder3d(
-            input_datacube_shape,
-            self.model_cfg["base_block"],
-            conv_blocks=self.model_cfg["encoder_depth"],
-            hidden_channels=self.model_cfg["encoder_channels"],
-            global_pooling=(
-                self.model_cfg["global_pooling"] if "global_pooling" in self.model_cfg else "avg"
-            ),
+        # Create the spatial encoder
+        self.spatial_encoder = SpatialEncoder(
+            C,
+            self.model_cfg["spatial_encoder"]["n_blocks"],
+            self.model_cfg["spatial_encoder"]["base_channels"],
+            self.model_cfg["spatial_encoder"]["base_block"],
+            kernel_size=3,
         )
-        # Create the common linear module
-        self.common_linear_model = CommonLinearModule(
-            self.encoder.output_shape,
-            len(self.target_steps),
-            num_input_variables * past_steps,
-            cfg["model_hyperparameters"]["clm_reduction_factor"],
+        C, H, W = self.spatial_encoder.output_size((C, H, W))
+        # Create the temporal encoder
+        self.temporal_encoder = TemporalEncoder(
+            C, H, W, 3, 7, self.model_cfg["temporal_encoder"]["n_blocks"]
         )
-        # Create the prediction heads
+        latent_size = C * past_steps * H * W
+        context_size = self.dataset.context_size()
+
+        # Create a prediction head which will predict the mean of the distribution of Y_0
+        # for each task
+        self.location_head = nn.ModuleDict({})
+        head_reduction_factor = self.model_cfg["prediction_head"]["reduction_factor"]
+        for task, task_params in tabular_tasks.items():
+            self.location_head[task] = PredictionHead(
+                    latent_size, context_size, 1, len(self.target_steps), head_reduction_factor)
+
+        # Create the prediction heads which will predict the distribution of the residual
+        # P(Y_t - Y_0 | Y_0) for each task
         self.prediction_heads = nn.ModuleDict({})
-        self.loss_functions = {}
         for task, task_params in tabular_tasks.items():
             # Create the prediction head. If the task is to predict a distribution at each
             # time step, use PredictionHead. Otherwise, use MultivariatePredictionHead.
             if task_params["distrib_obj"].is_multivariate:
                 self.prediction_heads[task] = MultivariatePredictionHead(
-                    self.common_linear_model.output_size, task_params["output_size"]
+                    latent_size, task_params["output_size"]
                 )
             else:
                 self.prediction_heads[task] = PredictionHead(
-                    self.common_linear_model.output_size,
+                    latent_size,
+                    context_size,
                     task_params["output_size"],
                     len(self.target_steps),
+                    head_reduction_factor,
                 )
-
-        # Create the WeightedLoss object if needed
-        if self.use_weighted_loss:
-            self.weighted_loss = WeightedLoss(
-                dataset,
-                plot_weights="figures/weighted_loss.png",
-            )
-        # Create the TiltedLoss object if needed
-        if self.use_tilted_loss:
-            self.tilted_loss = TiltedLoss(self.training_cfg["loss_tilting"])
 
     def compute_losses(self, batch, train_or_val="train"):
         """
@@ -120,9 +118,7 @@ class StormPredictionModel(pl.LightningModule):
         """
         past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
-        # If using a weighted / tilted loss, the loss function should return one value per sample
-        # and not the mean over the batch
-        reduce_mean = "time" if (self.use_weighted_loss or self.use_tilted_loss) else "all"
+        reduce_mean = "all"
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
@@ -229,15 +225,18 @@ class StormPredictionModel(pl.LightningModule):
         """
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)
-        # Encode the past datacubes into a latent space
-        # Returns the skip connections
-        latent_space = self.encoder(past_datacubes)
-        # Apply the common linear model to the latent space and the past variables
-        latent_space = self.common_linear_model(latent_space, past_variables)
+        # Concatenate the context variables into a single tensor
+        past_variables = torch.cat(list(past_variables.values()), dim=1)
+        # Apply the spatial encoder
+        latent_space = self.spatial_encoder(past_datacubes)
+        # Apply the temporal encoder
+        latent_space = self.temporal_encoder(latent_space)
+        # Flatten the latent space
+        latent_space = latent_space.view(latent_space.size(0), -1)
         # Apply the prediction heads
         predictions = {}
         for task, task_params in self.tabular_tasks.items():
-            predictions[task] = self.prediction_heads[task](latent_space)
+            predictions[task] = self.prediction_heads[task](latent_space, past_variables)
             # Check if there is an activation function specific to the distribution
             if hasattr(task_params["distrib_obj"], "activation"):
                 predictions[task] = task_params["distrib_obj"].activation(predictions[task])

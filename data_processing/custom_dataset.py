@@ -299,6 +299,12 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         h, w = self.transforms.transforms[-1].size
         return c, self.past_steps, h, w
 
+    def context_size(self):
+        """
+        Returns the number of contextual variables.
+        """
+        return len(self.input_columns) * self.past_steps
+
     def get_sample_intensities(self):
         """
         For every sequences S_1, ..., S_N, returns the intensities

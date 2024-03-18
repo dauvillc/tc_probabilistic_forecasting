@@ -7,6 +7,97 @@ import torch
 from torch import nn
 
 
+class PredictionHead(nn.Module):
+    """
+    Receives as input a latent space and a set of contextual variables, and
+    predicts the parameters of the marginal distribution of the target time
+    steps.
+
+    Parameters
+    ----------
+    latent_size: int
+        The size of the input latent space.
+    conextual_size: int
+        The number of contextual variables.
+    output_vars: int
+        The number of output variables.
+    target_steps: int
+        The number of time steps to predict.
+    reduction_factor: int
+        Reduction factor in the hidden layer.
+    """
+    def __init__(self, input_size, contextual_size, output_vars, target_steps, reduction_factor):
+        super().__init__()
+        self.input_size = input_size
+        self.contextual_size = contextual_size
+        self.output_vars = output_vars
+        self.target_steps = target_steps
+        # Contextual variables embedding
+        self.embedding = nn.Linear(contextual_size, contextual_size)
+        # Linear layers
+        hidden_size = input_size // reduction_factor
+        self.linear_1 = nn.Linear(input_size + contextual_size, hidden_size)
+        self.linear_2 = nn.Linear(hidden_size, output_vars * target_steps)
+
+    def forward(self, latent_space, contextual_vars):
+        """
+        Parameters
+        ----------
+        latent_space: torch tensor of dimensions (N, input_size)
+            The latent space produced by the common linear module.
+        contextual_vars: torch tensor of dimensions (N, contextual_size)
+            The contextual variables.
+        Returns
+        -------
+        torch tensor of dimensions (N, T, output_vars)
+            The prediction.
+        """
+        # Embed the contextual variables
+        contextual_vars = torch.selu(self.embedding(contextual_vars))
+        # Concatenate the latent space with the contextual variables
+        x = torch.cat([latent_space, contextual_vars], dim=1)
+        # Apply the linear layers
+        x = torch.selu(self.linear_1(x))
+        x = torch.selu(self.linear_2(x))
+        return x
+
+
+class MultivariatePredictionHead(nn.Module):
+    """
+    Similar to PredictionHead, but predicts the parameters of a multivariate
+    distribution over all time steps at once, instead of predicting the parameters
+    of the marginal distribution at each time step.
+
+    Parameters
+    ----------
+    input_size: int
+        The size of the input latent space.
+    n_parameters:
+        The number of parameters of the multivariate distribution.
+    """
+    def __init__(self, input_size, n_parameters):
+        super().__init__()
+        self.n_parameters = n_parameters
+        self.output_size = n_parameters
+        # Fully connected layer
+        self.fc = nn.Linear(input_size, self.n_parameters)
+
+    def forward(self, latent_space):
+        """
+        Parameters
+        ----------
+        latent_space: torch tensor of dimensions (N, input_size)
+            The latent space produced by the common linear module.
+        Returns
+        -------
+        torch tensor of dimensions (N, n_parameters)
+            The prediction.
+        """
+        # Apply the fully connected layer
+        prediction = self.fc(latent_space)
+        return prediction
+
+
 class CommonLinearModule(nn.Module):
     """
     Implements a linear layer that receives as input the latent space produced by
@@ -76,79 +167,3 @@ class CommonLinearModule(nn.Module):
         x = torch.selu(self.linear_3(x))
         return x
 
-
-class PredictionHead(nn.Module):
-    """
-    Implements a prediction head for a given task.
-    The prediction head receives as input the latent space produced by the
-    common linear module, and outputs a prediction for the given task at
-    each target step.
-
-    Parameters
-    ----------
-    input_size: int
-        The size of the input latent space.
-    n_output_vars: int
-        The number of predicted variables.
-    tagret_steps: int
-        The number of time steps to predict.
-    """
-    def __init__(self, input_size, n_output_vars, target_steps):
-        super().__init__()
-        self.n_output_vars = n_output_vars
-        self.target_steps = target_steps
-        self.output_size = n_output_vars * target_steps
-        # Fully connected layer
-        self.fc = nn.Linear(input_size, self.output_size)
-
-    def forward(self, latent_space):
-        """
-        Parameters
-        ----------
-        latent_space: torch tensor of dimensions (N, input_size)
-            The latent space produced by the common linear module.
-        Returns
-        -------
-        torch tensor of dimensions (N, target_steps, n_output_vars)
-            The prediction.
-        """
-        # Apply the fully connected layer
-        prediction = self.fc(latent_space)
-        # Reshape the prediction
-        return prediction.reshape(-1, self.target_steps, self.n_output_vars)
-
-
-class MultivariatePredictionHead(nn.Module):
-    """
-    Similar to PredictionHead, but predicts the parameters of a multivariate
-    distribution over all time steps at once, instead of predicting the parameters
-    of the marginal distribution at each time step.
-
-    Parameters
-    ----------
-    input_size: int
-        The size of the input latent space.
-    n_parameters:
-        The number of parameters of the multivariate distribution.
-    """
-    def __init__(self, input_size, n_parameters):
-        super().__init__()
-        self.n_parameters = n_parameters
-        self.output_size = n_parameters
-        # Fully connected layer
-        self.fc = nn.Linear(input_size, self.n_parameters)
-
-    def forward(self, latent_space):
-        """
-        Parameters
-        ----------
-        latent_space: torch tensor of dimensions (N, input_size)
-            The latent space produced by the common linear module.
-        Returns
-        -------
-        torch tensor of dimensions (N, n_parameters)
-            The prediction.
-        """
-        # Apply the fully connected layer
-        prediction = self.fc(latent_space)
-        return prediction

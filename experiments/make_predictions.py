@@ -60,7 +60,6 @@ if __name__ == "__main__":
     model = StormPredictionModel.load_from_checkpoint(
         checkpoint,
         input_datacube_shape=datacube_shape,
-        num_input_variables=num_input_variables,
         tabular_tasks=tasks,
         dataset=val_dataset,
         cfg=cfg,
