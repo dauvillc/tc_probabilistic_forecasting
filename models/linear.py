@@ -59,6 +59,8 @@ class PredictionHead(nn.Module):
         # Apply the linear layers
         x = torch.selu(self.linear_1(x))
         x = torch.selu(self.linear_2(x))
+        # Reshape to (N, T, output_vars)
+        x = x.view(-1, self.target_steps, self.output_vars)
         return x
 
 
