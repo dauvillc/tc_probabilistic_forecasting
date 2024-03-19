@@ -57,12 +57,6 @@ class StormPredictionModel(pl.LightningModule):
         self.model_cfg = cfg["model_hyperparameters"]
         self.training_cfg = cfg["training_settings"]
         self.input_datacube_shape = input_datacube_shape
-        self.use_weighted_loss = (
-            "use_weighted_loss" in self.training_cfg and self.training_cfg["use_weighted_loss"]
-        )
-        self.use_tilted_loss = "loss_tilting" in self.training_cfg and self.training_cfg[
-            "loss_tilting"
-        ] not in [None, 0]
         past_steps = cfg["experiment"]["past_steps"]
         self.target_steps = cfg["experiment"]["target_steps"]
         self.patch_size = cfg["experiment"]["patch_size"]
@@ -127,12 +121,6 @@ class StormPredictionModel(pl.LightningModule):
             losses[task] = task_params["distrib_obj"].loss_function(
                 predictions[task], targets[task], reduce_mean=reduce_mean
             )
-            # If the weighted loss is used, apply the weights
-            if self.use_weighted_loss:
-                losses[task] = self.weighted_loss(losses[task], targets["vmax"])
-            # Same for the tilted loss
-            if self.use_tilted_loss:
-                losses[task] = self.tilted_loss(losses[task])
             # Log the loss
             self.log(
                 f"{train_or_val}_loss_{task}",
