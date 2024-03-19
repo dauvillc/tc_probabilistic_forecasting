@@ -28,9 +28,7 @@ class SpatialEncoder(nn.Module):
         The size of the kernel used in the 3D convolution. Defaults to 3.
     """
 
-    def __init__(
-        self, input_channels, n_blocks, base_channels, base_block, kernel_size=3
-    ):
+    def __init__(self, input_channels, n_blocks, base_channels, base_block, kernel_size=3):
         super().__init__()
 
         self.input_channels = input_channels
@@ -38,11 +36,11 @@ class SpatialEncoder(nn.Module):
         self.base_channels = base_channels
 
         # Create the layers
-        self.layers = nn.Sequential()
+        self.blocks = nn.ModuleList()
         in_channels = input_channels
         for i in range(n_blocks):
             out_channels = base_channels * 2**i
-            self.layers.append(
+            self.blocks.append(
                 DownsamplingBlock3D(
                     in_channels, out_channels, base_block, (1, kernel_size, kernel_size)
                 )
@@ -63,7 +61,9 @@ class SpatialEncoder(nn.Module):
         torch.Tensor
             Output tensor of shape (N, C, T, H', W').
         """
-        return self.layers(x)
+        for block in self.blocks:
+            x = block(x)
+        return x
 
     def output_size(self, input_size):
         """
@@ -73,7 +73,7 @@ class SpatialEncoder(nn.Module):
         ----------
         input_size : tuple
             Size of the input tensor, as a tuple (C, H, W).
-        
+
         Returns
         -------
         tuple
@@ -81,7 +81,7 @@ class SpatialEncoder(nn.Module):
         """
         # Compute the size after each downsampling block
         size = (input_size[0], 1, input_size[1], input_size[2])
-        for layer in self.layers:
-            size = layer.output_size(size)
+        for block in self.blocks:
+            size = block.output_size(size)
 
         return (size[0], size[2], size[3])

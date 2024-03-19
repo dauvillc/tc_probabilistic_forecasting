@@ -289,7 +289,7 @@ if __name__ == "__main__":
             for i, t in enumerate(T):
                 # Get the scores of all samples at time t
                 if metric_value.dim() == 1:
-                    if metric_value.shape[0] == T:
+                    if metric_value.shape[0] == len(T):
                         # Metric that has one value for each time step
                         # Consider it constant over time
                         values_at_t = [metric_value[i].item()]

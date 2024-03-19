@@ -44,19 +44,28 @@ class BasicCNNBlock3D(nn.Module):
         super().__init__()
         self.kernel_size = kernel_size
         self.out_channels = out_channels
-        # Convolution
-        self.conv = nn.Conv3d(
-            in_channels,
-            out_channels,
-            kernel_size=(1, kernel_size, kernel_size),
-            padding="same",
+        # Order based on "Identity Mappings in Deep Residual Networks"
+        self.layers = nn.Sequential(
+            nn.BatchNorm3d(in_channels),
+            nn.SELU(),
+            nn.Conv3d(
+                in_channels,
+                out_channels,
+                kernel_size=(1, kernel_size, kernel_size),
+                padding="same",
+            ),
+            nn.BatchNorm3d(out_channels),
+            nn.SELU(),
+            nn.Conv3d(
+                out_channels,
+                out_channels,
+                kernel_size=(1, kernel_size, kernel_size),
+                padding="same",
+            ),
         )
-        self.batch_norm = nn.BatchNorm3d(out_channels)
 
     def forward(self, x):
-        x = torch.selu(self.conv(x))
-        x = self.batch_norm(x)
-        return x
+        return self.layers(x)
 
     def output_size(self, input_size):
         """

@@ -78,10 +78,11 @@ class StormPredictionModel(pl.LightningModule):
         )
         C, H, W = self.spatial_encoder.output_size((C, H, W))
         # Create the temporal encoder
+        C_out = C // self.model_cfg["temporal_encoder"]["reduction_factor"]
         self.temporal_encoder = TemporalEncoder(
-            C, H, W, 3, 7, self.model_cfg["temporal_encoder"]["n_blocks"]
+            C, H, W, C_out, 3, 7, self.model_cfg["temporal_encoder"]["n_blocks"]
         )
-        latent_size = C * past_steps * H * W
+        latent_size = C_out * past_steps * H * W
         context_size = self.dataset.context_size()
 
         # Create a prediction head which will predict the mean of the distribution of Y_0
@@ -90,7 +91,8 @@ class StormPredictionModel(pl.LightningModule):
         head_reduction_factor = self.model_cfg["prediction_head"]["reduction_factor"]
         for task, task_params in tabular_tasks.items():
             self.location_head[task] = PredictionHead(
-                    latent_size, context_size, 1, len(self.target_steps), head_reduction_factor)
+                latent_size, context_size, 1, len(self.target_steps), head_reduction_factor
+            )
 
         # Create the prediction heads which will predict the distribution of the residual
         # P(Y_t - Y_0 | Y_0) for each task

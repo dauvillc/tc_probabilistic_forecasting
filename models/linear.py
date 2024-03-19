@@ -3,6 +3,7 @@ Implements the linear modules:
 - CommonLinearModule
 - PredictionHead
 """
+
 import torch
 from torch import nn
 
@@ -26,6 +27,7 @@ class PredictionHead(nn.Module):
     reduction_factor: int
         Reduction factor in the hidden layer.
     """
+
     def __init__(self, input_size, contextual_size, output_vars, target_steps, reduction_factor):
         super().__init__()
         self.input_size = input_size
@@ -58,7 +60,7 @@ class PredictionHead(nn.Module):
         x = torch.cat([latent_space, contextual_vars], dim=1)
         # Apply the linear layers
         x = torch.selu(self.linear_1(x))
-        x = torch.selu(self.linear_2(x))
+        x = self.linear_2(x)
         # Reshape to (N, T, output_vars)
         x = x.view(-1, self.target_steps, self.output_vars)
         return x
@@ -77,6 +79,7 @@ class MultivariatePredictionHead(nn.Module):
     n_parameters:
         The number of parameters of the multivariate distribution.
     """
+
     def __init__(self, input_size, n_parameters):
         super().__init__()
         self.n_parameters = n_parameters
@@ -120,8 +123,8 @@ class CommonLinearModule(nn.Module):
     hidden_size_reduction: int
         The reduction factor in the hidden layers.
     """
-    def __init__(self, input_shape, output_depth,
-                 n_input_vars, hidden_size_reduction):
+
+    def __init__(self, input_shape, output_depth, n_input_vars, hidden_size_reduction):
         super().__init__()
         # Compute the size of the latent space
         c, d, h, w = input_shape
@@ -154,10 +157,10 @@ class CommonLinearModule(nn.Module):
             The output of the linear module.
         """
         # Flatten the latent space and apply the first linear layer
-        latent_space = latent_space.reshape(latent_space.shape[0], -1) # (N, input_size)
+        latent_space = latent_space.reshape(latent_space.shape[0], -1)  # (N, input_size)
         x = torch.selu(self.linear_1(latent_space))
         # Embed the past variables and concatenate them with the latent space
-        if len(past_vars) > 0:  
+        if len(past_vars) > 0:
             # Concatenate the past variables into a single tensor
             past_vars = torch.cat(list(past_vars.values()), dim=1)
             # Embed the past variables
@@ -168,4 +171,3 @@ class CommonLinearModule(nn.Module):
         x = torch.selu(self.linear_2(x))
         x = torch.selu(self.linear_3(x))
         return x
-

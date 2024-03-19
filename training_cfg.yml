@@ -1,10 +1,10 @@
 experiment:
-  name: normal_new_arch
+  name: qc_new_arch
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
   # [0, 2] means +0h and +12h.
-  target_steps: [0, 2]
+  target_steps: [1, 2, 3, 4]
   # Size of the input and output patches, in pixels (resolution=0.07°)
   patch_size: 128
   # Which contextual variables to include: (must be at least [])
@@ -25,7 +25,7 @@ tasks:
   # - "multivariate_normal"
   vmax:
     output_variables: ['INTENSITY']
-    distribution: deterministic
+    distribution: qc
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
@@ -66,9 +66,10 @@ model_hyperparameters:
   spatial_encoder:
     # What type of base block to use (either 'cbam' or 'conv')
     base_block: conv
-    n_blocks: 3
+    n_blocks: 5
     base_channels: 8
   temporal_encoder:
+    reduction_factor: 8
     n_blocks: 3
   prediction_head:
-    reduction_factor: 128
+    reduction_factor: 32
