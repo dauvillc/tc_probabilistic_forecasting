@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from utils.wandb import retrieve_wandb_runs
-from utils.io import load_targets, load_predictions
+from utils.io import load_predictions_and_targets
 from utils.utils import matplotlib_markers, sshs_category
 
 
@@ -71,8 +71,9 @@ if __name__ == "__main__":
     run_names = {run_id: runs[run_id].name for run_id in args.ids}
 
     # ===== LOAD TARGETS AND PREDICTIONS =====
-    all_runs_predictions = load_predictions(args.ids)
-    targets = load_targets()
+    all_runs_predictions, all_runs_targets = load_predictions_and_targets(args.ids)
+    # Select the targets of any run, since they are supposed to be the same
+    targets = all_runs_targets[args.ids[0]]
 
     # ==== PLOTTING PREPARATION ====
     # Create a folder to store the plots
@@ -123,7 +124,7 @@ if __name__ == "__main__":
             crps[run_id] = crps_fn(
                 all_runs_predictions[run_id][task][idxs],
                 targets[task][idxs],
-                reduce_mean=False,
+                reduce_mean="time",
             )  # (N,)
         # For each example
         for i, idx in enumerate(idxs):
