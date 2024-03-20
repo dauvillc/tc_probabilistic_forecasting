@@ -38,18 +38,16 @@ class TemporalBlock(nn.Module):
                     nn.SELU(),
                     nn.BatchNorm3d(in_channels // 2),
                 )
-                for _ in range(4)
+                for _ in range(1)
             ]
         )
-        # Spatial motion
-        c, kt, ks = in_channels // 2, kernel_size_time, kernel_size_space
-        convs = []
-        convs.append(nn.Conv3d(c, c, kernel_size=(1, ks, ks), padding="same"))
-        # Horizontal and vertical motions
-        convs.append(nn.Conv3d(c, c, kernel_size=(kt, 1, ks), padding="same"))
-        convs.append(nn.Conv3d(c, c, kernel_size=(kt, ks, 1), padding="same"))
-        # Complete motion
-        convs.append(nn.Conv3d(c, c, kernel_size=(kt, ks, ks), padding="same"))
+        # Spatio-temporal conv
+        convs = nn.ModuleList([])
+        kt, ks = kernel_size_time, kernel_size_space
+        c = in_channels // 2
+        convs.append(
+            nn.Conv3d(c, c, kernel_size=(kt, ks, ks), padding="same")
+        )
         # Assemble the local convolutions with SELU and batch normalization
         self.local_convs = nn.ModuleList(
             [nn.Sequential(conv, nn.SELU(), nn.BatchNorm3d(c)) for conv in convs]
@@ -72,7 +70,7 @@ class TemporalBlock(nn.Module):
         )
         # Final convolution
         self.final_conv = nn.Sequential(
-            nn.Conv3d(4 * (in_channels // 2) + 3 * (in_channels // 3), in_channels, kernel_size=1),
+            nn.Conv3d(1 * (in_channels // 2) + 3 * (in_channels // 3), in_channels, kernel_size=1),
             nn.SELU(),
             nn.BatchNorm3d(in_channels),
         )
