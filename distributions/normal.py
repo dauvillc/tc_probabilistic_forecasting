@@ -4,6 +4,7 @@ Implements the NormalDistribution class, which can be used as output distributio
 
 import torch
 from torch.distributions import Normal
+from distributions.prediction_distribution import PredictionDistribution
 from utils.utils import add_batch_dim, average_score
 from loss_functions.common import SSHSBrierScore
 
@@ -77,7 +78,7 @@ def normal_coverage(predicted_params, y, alpha=0.0101, reduce_mean="all"):
     return average_score(coverage, reduce_mean)
 
 
-class NormalDistribution:
+class NormalDistribution(PredictionDistribution):
     """
     Object that contains the loss function, cdf and metrics for normal distributions.
 
@@ -169,6 +170,24 @@ class NormalDistribution:
         # Standard deviation of the distribution:
         predicted_params[:, :, 1] = predicted_params[:, :, 1] * stds
         return predicted_params
+
+    def translate(self, predicted_params, x):
+        """
+        Translates the distribution by adding x to the mean.
+
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, 2)
+            The predicted parameters of the normal distribution for each sample and time step.
+        x : torch.Tensor of shape (N, T, 1)
+            The values to add to the mean.
+
+        Returns
+        -------
+        torch.Tensor of shape (N, T, 2)
+            The translated distribution.
+        """
+        return predicted_params + torch.cat([x, torch.zeros_like(x)], dim=-1)
 
     def pdf(self, predicted_params, x):
         """

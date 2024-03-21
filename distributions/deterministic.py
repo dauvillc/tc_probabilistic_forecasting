@@ -3,6 +3,7 @@ Implements the DeterministicDistribution class, which is useful to integrate a d
 model into the probabilistic pipeline.
 """
 import torch
+from distributions.prediction_distribution import PredictionDistribution
 from utils.utils import add_batch_dim, average_score
 
 
@@ -44,7 +45,7 @@ def RMSE(y_pred, y_true, reduce_mean="all"):
         return torch.sqrt(mse.mean(dim=0))
 
 
-class DeterministicDistribution:
+class DeterministicDistribution(PredictionDistribution):
     """
     Object that defines a deterministic distribution, i.e. the CDF is the step function
     that assigns probability 1 after the predicted value, and 0 before it.
@@ -58,16 +59,27 @@ class DeterministicDistribution:
         self.n_parameters = 1
         self.is_multivariate = False
 
-        # The output of the model will have shape (N, T, V) where N is the batch size,
-        # T is the number of time steps and V is the number of output variables.
-        self.loss_function = mse
-
         # Define the metrics
         self.metrics = {
                 'RMSE': RMSE,
                 'MAE': mae,
                 'CRPS': mae  # The CRPS is the MAE for a deterministic distribution
                 }
+
+    def loss_function(self, y_pred, y_true, reduce_mean="all"):
+        """
+        MSE Loss.
+
+        Parameters
+        ----------
+        y_pred : torch.Tensor of shape (N, T, 1)
+            The predicted values for each sample and time step.
+        y_true : torch.Tensor of shape (N, T)
+        reduce_mean : str
+            Over which dimensions to reduce the mean.
+            Can be "all", "samples", "time" or "none".
+        """
+        return mse(y_pred, y_true, reduce_mean)
 
     def hyperparameters(self):
         """
@@ -145,3 +157,21 @@ class DeterministicDistribution:
         stds = stds.view(predicted_params.shape[1:]).to(predicted_params.device)
         # De-normalize the predictions
         return predicted_params * stds + means
+
+    def translate(self, predicted_params, x):
+        """
+        Translates the predicted values.
+
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, V)
+            The predicted values for each sample and time step.
+        x: torch.Tensor of shape (N, T, V)
+            The amount by which to translate the predicted values.
+
+        Returns
+        -------
+        torch.Tensor of shape (N, T, V)
+            The translated predicted values.
+        """
+        return predicted_params + x

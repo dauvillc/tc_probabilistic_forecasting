@@ -4,12 +4,13 @@ Defines the QuantileCompositeDistribution class.
 
 import torch
 import torch.nn.functional as F
+from distributions.prediction_distribution import PredictionDistribution
 from loss_functions.quantiles import CompositeQuantileLoss, QuantilesCRPS, quantiles_coverage
 from loss_functions.common import SSHSBrierScore
 from utils.utils import add_batch_dim
 
 
-class QuantileCompositeDistribution:
+class QuantileCompositeDistribution(PredictionDistribution):
     """
     Object that can define a distribution from a set of quantiles.
     Remark: to ensure that the quantiles do not cross, the predictions
@@ -30,9 +31,7 @@ class QuantileCompositeDistribution:
         self.probas = torch.linspace(1 / Q, 1, Q) - 0.5 / Q
         self.n_parameters = len(self.probas)
         self.is_multivariate = False
-
-        # Define the loss function
-        self.loss_function = CompositeQuantileLoss(self.probas)
+        self.loss_obj = CompositeQuantileLoss(self.probas)
 
         # Define the metrics
         self.metrics = {
@@ -65,6 +64,20 @@ class QuantileCompositeDistribution:
         )
         # Compute the quantiles
         return torch.cumsum(pred, dim=2)
+    
+    def loss_function(self, y_pred, y_true, reduce_mean="all"):
+        """
+        Parameters
+        ----------
+        y_pred : torch.Tensor of shape (N, T, Q)
+            The predicted quantiles.
+        y_true : torch.Tensor of shape (N, T)
+            The true values.
+        reduce_mean : str
+            Over which dimension(s) to average the loss.
+            Can be "all", "samples", "time" or "none".
+        """
+        return self.loss_obj(y_pred, y_true, reduce_mean)
 
     def denormalize(self, predicted_params, task, dataset):
         """
@@ -90,6 +103,24 @@ class QuantileCompositeDistribution:
         stds = stds.view(1, -1, 1).to(predicted_params.device)
         # De-normalize the predictions
         return predicted_params * stds + means
+
+    def translate(self, predicted_params, x):
+        """
+        Translates the predicted quantiles by a given value.
+        
+        Parameters
+        ----------
+        predicted_params : torch.Tensor of shape (N, T, Q)
+            The predicted quantiles.
+        x : torch.Tensor of shape (N, T, 1):
+            The value to add to the predicted quantiles.
+
+        Returns
+        -------
+        translated_quantiles : torch.Tensor of shape (N, T, Q)
+            The translated quantiles.
+        """
+        return predicted_params + x
 
     def _preprocess_input(self, predicted_params, x):
         """

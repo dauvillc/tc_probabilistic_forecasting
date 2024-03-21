@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 from models.spatial_encoder import SpatialEncoder
 from models.temporal_encoder import TemporalEncoder
 from models.linear import PredictionHead, MultivariatePredictionHead
+from utils.predictions import ResidualPrediction
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -79,7 +80,7 @@ class StormPredictionModel(pl.LightningModule):
         latent_size = C_out * past_steps * H * W
         context_size = self.dataset.context_size()
 
-        # Create a prediction head which will predict the mean of the distribution of Y_0
+        # Create a prediction head which will predict the location of the distribution of Y_0
         # for each task
         self.location_head = nn.ModuleDict({})
         head_reduction_factor = self.model_cfg["prediction_head"]["reduction_factor"]
@@ -88,18 +89,18 @@ class StormPredictionModel(pl.LightningModule):
                 latent_size, context_size, 1, len(self.target_steps), head_reduction_factor
             )
 
-        # Create the prediction heads which will predict the distribution of the residual
+        # Create the residual heads which will predict the distribution of the residual
         # P(Y_t - Y_0 | Y_0) for each task
-        self.prediction_heads = nn.ModuleDict({})
+        self.residual_heads = nn.ModuleDict({})
         for task, task_params in tabular_tasks.items():
             # Create the prediction head. If the task is to predict a distribution at each
             # time step, use PredictionHead. Otherwise, use MultivariatePredictionHead.
             if task_params["distrib_obj"].is_multivariate:
-                self.prediction_heads[task] = MultivariatePredictionHead(
+                self.residual_heads[task] = MultivariatePredictionHead(
                     latent_size, task_params["output_size"]
                 )
             else:
-                self.prediction_heads[task] = PredictionHead(
+                self.residual_heads[task] = PredictionHead(
                     latent_size,
                     context_size,
                     task_params["output_size"],
@@ -112,22 +113,35 @@ class StormPredictionModel(pl.LightningModule):
         Computes the losses for a single batch (subfunction of training_step
         and validation_step).
         """
-        past_variables, past_datacubes, targets = batch
+        past_variables, past_datacubes, target_locations, target_residuals = batch
         predictions = self.forward(past_variables, past_datacubes)
         reduce_mean = "all"
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
-            losses[task] = task_params["distrib_obj"].loss_function(
-                predictions[task], targets[task], reduce_mean=reduce_mean
+            # Loss for the location prediction (predict Y_0)
+            location_loss = predictions.loc_distrib.loss_function(
+                predictions.locations[task], target_locations[task], reduce_mean=reduce_mean
             )
             # Log the loss
             self.log(
-                f"{train_or_val}_loss_{task}",
-                losses[task],
+                f"{train_or_val}_location_loss_{task}",
+                location_loss,
                 on_step=False,
                 on_epoch=True,
             )
+            # Loss for the residual prediction (predict Y_t - Y_0)
+            residual_loss = predictions.distribs[task].loss_function(
+                predictions.residuals[task], target_residuals[task], reduce_mean=reduce_mean
+            )
+            self.log(
+                f"{train_or_val}_residual_loss_{task}",
+                residual_loss,
+                on_step=False,
+                on_epoch=True,
+            )
+            # Sum the losses to get the total loss for the task
+            losses[task] = location_loss + residual_loss
         # Compute the total loss
         # In the case of single-task finetuning, the total loss is the loss of the trained task
         if self.training_cfg["trained_task"] is not None:
@@ -157,23 +171,24 @@ class StormPredictionModel(pl.LightningModule):
         total_loss = self.compute_losses(batch, train_or_val="val")
 
         # The rest of the function computes the metrics for each task
-        past_variables, past_datacubes, targets = batch
+        past_variables, past_datacubes, true_locations, true_residuals = batch
         predictions = self.forward(past_variables, past_datacubes)
 
-        # Before computing the metrics, we'll denormalize the target values, so that metrics are
+        # Before computing the metrics, we'll denormalize the targets and predictions, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
-        targets = self.dataset.denormalize_tabular_target(targets)
+        true_locations = self.dataset.denormalize_tabular_target(true_locations)
+        # Denormalize the predictions
+        predictions = predictions.denormalize(self.dataset)
 
         # Compute the metrics for each task
         for task, task_params in self.tabular_tasks.items():
-            # Denormalize the predictions using the task-specific denormalization function
-            # so that the metrics are computed in the original scale
-            predictions[task] = task_params["distrib_obj"].denormalize(
-                predictions[task], task, self.dataset
-            )
+            # Compute the distribution of the final predictions (Location + Residual)
+            predictions = predictions.final_predictions(task)
+            # Compute the final targets (Location + Residual)
+            targets = true_locations[task] + true_residuals[task]
             for metric_name, metric in task_params["distrib_obj"].metrics.items():
                 # Compute the metric in the original scale
-                metric_value = metric(predictions[task], targets[task])
+                metric_value = metric(predictions, targets)
                 self.log(
                     f"val_{metric_name}_{task}",
                     metric_value,
@@ -189,11 +204,8 @@ class StormPredictionModel(pl.LightningModule):
         """
         past_variables, past_datacubes, targets = batch
         predictions = self.forward(past_variables, past_datacubes)
-        # Denormalize the predictions using the task-specific denormalization function
-        for task, task_params in self.tabular_tasks.items():
-            predictions[task] = task_params["distrib_obj"].denormalize(
-                predictions[task], task, self.dataset
-            )
+        # Denormalize the predictions
+        predictions = predictions.denormalize(self.dataset)
         return predictions
 
     def forward(self, past_variables, past_datacubes):
@@ -209,9 +221,9 @@ class StormPredictionModel(pl.LightningModule):
 
         Returns
         -------
-        Mapping of str to tensor
-            The predictions, with the keys being the task names and the values being batches
-            of predicted tensors.
+        ResidualPrediction object
+            Object which contains the predictions (location, residual distribution, and complete
+            distribution) for each task.
         """
         # Concatenate the past datacubes into a single tensor along the channel dimension
         past_datacubes = torch.cat(list(past_datacubes.values()), dim=1)
@@ -224,12 +236,15 @@ class StormPredictionModel(pl.LightningModule):
         # Flatten the latent space
         latent_space = latent_space.view(latent_space.size(0), -1)
         # Apply the prediction heads
-        predictions = {}
+        predictions = ResidualPrediction()
         for task, task_params in self.tabular_tasks.items():
-            predictions[task] = self.prediction_heads[task](latent_space, past_variables)
-            # Check if there is an activation function specific to the distribution
-            if hasattr(task_params["distrib_obj"], "activation"):
-                predictions[task] = task_params["distrib_obj"].activation(predictions[task])
+            # Predict the location of the distribution
+            location = self.location_head[task](latent_space, past_variables)
+            # Predict the residual distribution
+            residuals = self.residual_heads[task](latent_space, past_variables)
+            # Store the predictions in the ResidualPrediction object, which also
+            # calls the activation function of the distribution object
+            predictions.add(task, location, residuals, task_params["distrib_obj"])
         return predictions
 
     def configure_optimizers(self):
@@ -252,7 +267,7 @@ class StormPredictionModel(pl.LightningModule):
             # Freeze the parameters of the other prediction heads
             for task in self.tabular_tasks.keys():
                 if task != self.training_cfg["trained_task"]:
-                    for param in self.prediction_heads[task].parameters():
+                    for param in self.residual_heads[task].parameters():
                         param.requires_grad = False
 
         # Be careful to only update the parameters that require gradients

@@ -161,6 +161,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         - output_time_series: Mapping of str to torch.Tensor
             Target variables at the target time steps.
             output_time_series[task] is a tensor of shape (T,).
+        - output_residues: Mapping of str to torch.Tensor
+            Residuals between the target variables at each time step and
+            the variable at t=0.
         """
         # Retrieve the input time series.
         input_time_series = {}
@@ -178,10 +181,16 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             output_time_series[task] = torch.tensor(
                 self.trajectories[output_variables].iloc[idx].values, dtype=torch.float32
             )
+        # Retrieve the residuals.
+        output_residues = {}
+        for task in self.output_tabular_tasks:
+            residuals = self.get_task_output_variables(task, residuals=True)
+            output_residues[task] = torch.tensor(
+                self.trajectories[residuals].iloc[idx].values, dtype=torch.float32
+            )
 
         # Retrieve the index of the sample in the datacubes (i.e. the index of the storm at time t).
         datacube_index = self.trajectories.index[idx]
-
         # Retrieve the input datacubes.
         input_datacubes = {}
         for name in self.input_datacubes:
@@ -197,15 +206,23 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Apply the transforms to the input datacubes.
         input_datacubes = self.transforms(input_datacubes)
 
-        return input_time_series, input_datacubes, output_time_series
+        return input_time_series, input_datacubes, output_time_series, output_residues
 
-    def get_task_output_variables(self, task):
+    def get_task_output_variables(self, task, residuals=False):
         """
         For a given task name, returns the list of the output variables:
         V_t for every t in target_steps for every V in the task's output_variables.
+
+        Parameters
+        ----------
+        task: str
+            The name of the task.
+        residuals: bool, optional
+            If True, returns the residuals between the target variables and the variable at t=0.
+            Otherwise, returns the target variables.
         """
         return [
-            f"{var}_{t}"
+            f"{var}_{t}" if not residuals else f"DELTA_{var}_{t}"
             for var in self.output_tabular_tasks[task]["output_variables"]
             for t in self.target_steps
         ]
