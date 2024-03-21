@@ -140,7 +140,7 @@ class NormalDistribution(PredictionDistribution):
         loss = normal_crps(mu, sigma, y)
         return average_score(loss, reduce_mean)
 
-    def denormalize(self, predicted_params, task, dataset):
+    def denormalize(self, predicted_params, task, dataset, is_residuals=False):
         """
         De-normalizes the predicted parameters of the distribution.
 
@@ -152,6 +152,8 @@ class NormalDistribution(PredictionDistribution):
             The name of the task.
         dataset : dataset, as an object that implements the
             get_normalization_constants method.
+        is_residuals : bool, optional
+            If True, uses the residuals normalization constants.
 
         Returns
         -------
@@ -159,7 +161,7 @@ class NormalDistribution(PredictionDistribution):
             The de-normalized parameters.
         """
         # Get the normalization constants from the tasks dictionary
-        means, stds = dataset.get_normalization_constants(task)
+        means, stds = dataset.get_normalization_constants(task, residuals=is_residuals)
         # The normalization constants are of shape (T,) but the predicted means and stds
         # are of shape (N, T), so we need to add a new dimension to the constants.
         means = means.unsqueeze(0).to(predicted_params.device)

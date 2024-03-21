@@ -2,6 +2,7 @@
 Implements the ResidualPrediction class, which allows to manage
 predictions that are split between location and residuals.
 """
+
 from distributions.deterministic import DeterministicDistribution
 
 
@@ -18,6 +19,7 @@ class ResidualPrediction:
     Parameters
     ----------
     """
+
     def __init__(self):
         # Dictionaries to store the predictions
         # Keys are task names
@@ -83,7 +85,9 @@ class ResidualPrediction:
         for task_name in self.locations.keys():
             # The denormalization is specific to each distribution
             new_loc = self.loc_distrib.denormalize(self.locations[task_name], task_name, dataset)
-            new_res = self.distribs[task_name].denormalize(self.residuals[task_name], task_name, dataset)
+            new_res = self.distribs[task_name].denormalize(
+                self.residuals[task_name], task_name, dataset, is_residuals=True
+            )
             denorm_preds.add(task_name, new_loc, new_res, self.distribs[task_name])
         return denorm_preds
 
@@ -103,5 +107,4 @@ class ResidualPrediction:
             The parameters of the distribution of Ŷ_t, as a tensor of shape
             (batch_size, T, n_parameters).
         """
-        return self.final[task_name] 
-
+        return self.final[task_name]

@@ -132,7 +132,7 @@ class DeterministicDistribution(PredictionDistribution):
         # Identity activation function
         return predicted_params
 
-    def denormalize(self, predicted_params, task, dataset):
+    def denormalize(self, predicted_params, task, dataset, is_residuals=False):
         """
         Denormalizes the predicted values.
 
@@ -143,6 +143,8 @@ class DeterministicDistribution(PredictionDistribution):
         task : str
         dataset : dataset, as an object that implements the
             get_normalization_constants method.
+        is_residuals : bool
+            Whether the predicted values are residuals or not.
 
         Returns
         -------
@@ -150,7 +152,7 @@ class DeterministicDistribution(PredictionDistribution):
             The denormalized predicted values.
         """
         # Retrieve the normalization constants, of shape (T * V)
-        means, stds = dataset.get_normalization_constants(task)
+        means, stds = dataset.get_normalization_constants(task, residuals=is_residuals)
         # Reshape the means and stds to be broadcastable and move them to the same device
         # as the predictions
         means = means.view(predicted_params.shape[1:]).to(predicted_params.device)

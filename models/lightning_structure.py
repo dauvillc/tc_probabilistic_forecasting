@@ -177,6 +177,7 @@ class StormPredictionModel(pl.LightningModule):
         # Before computing the metrics, we'll denormalize the targets and predictions, so that metrics are
         # computed in the original scale. The constants are stored in the dataset object.
         true_locations = self.dataset.denormalize_tabular_target(true_locations)
+        true_residuals = self.dataset.denormalize_tabular_target(true_residuals, residuals=True)
         # Denormalize the predictions
         predictions = predictions.denormalize(self.dataset)
 

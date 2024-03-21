@@ -39,7 +39,7 @@ class PredictionDistribution(ABC):
         pass
 
     @abstractmethod
-    def denormalize(self, predicted_params, task, dataset):
+    def denormalize(self, predicted_params, task, dataset, is_residuals=False):
         """
         Denormalizes the predicted parameters. The process necessarily depends
         on the distribution.

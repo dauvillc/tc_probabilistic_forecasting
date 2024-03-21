@@ -79,7 +79,7 @@ class QuantileCompositeDistribution(PredictionDistribution):
         """
         return self.loss_obj(y_pred, y_true, reduce_mean)
 
-    def denormalize(self, predicted_params, task, dataset):
+    def denormalize(self, predicted_params, task, dataset, is_residuals=False):
         """
         Denormalizes the predicted values.
 
@@ -89,6 +89,8 @@ class QuantileCompositeDistribution(PredictionDistribution):
             The predicted values for each sample and time step.
         task : str
         dataset: dataset object that implements the get_normalization_constants method.
+        is_residuals : bool, optional
+            Whether the predicted values are residuals. Defaults to False.
 
         Returns
         -------
@@ -96,7 +98,7 @@ class QuantileCompositeDistribution(PredictionDistribution):
             The denormalized predicted quantiles.
         """
         # Retrieve the normalization constants, of shape (T,)
-        means, stds = dataset.get_normalization_constants(task)
+        means, stds = dataset.get_normalization_constants(task, residuals=is_residuals)
         # Reshape the means and stds to be broadcastable and move them to the same device
         # as the predictions
         means = means.view(1, -1, 1).to(predicted_params.device)

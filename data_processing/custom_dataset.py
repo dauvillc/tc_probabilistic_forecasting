@@ -95,7 +95,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             # Otherwise, just crop the center of the datacube.
             self.transforms = v2.Compose([v2.CenterCrop(cfg["experiment"]["patch_size"])])
 
-    def denormalize_tabular_target(self, variables):
+    def denormalize_tabular_target(self, variables, residuals=False):
         """
         Denormalize a batch of target variables, using the constants stored in the dataset.
 
@@ -104,6 +104,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         variables: Mapping of str to torch.Tensor
             The variables to denormalize. The keys are tasks names and the values are
             torch.Tensors.
+        residuals: bool, optional
+            If True, denormalizes the residuals between the target variables and the variable at t=0.
+            Otherwise, denormalizes the target variables.
 
         Returns
         -------
@@ -113,7 +116,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         denormalized_variables = {}
         for task in variables:
             # Retrieve the normalization constants for the task and convert them to tensors.
-            means, stds = self.get_normalization_constants(task)
+            means, stds = self.get_normalization_constants(task, residuals=residuals)
             # Load them to the same device as the variables.
             means = means.to(variables[task].device)
             stds = stds.to(variables[task].device)
@@ -121,7 +124,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             denormalized_variables[task] = variables[task] * stds + means
         return denormalized_variables
 
-    def get_normalization_constants(self, task):
+    def get_normalization_constants(self, task, residuals=False):
         """
         Returns the normalization constants for a given task.
 
@@ -129,6 +132,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         ----------
         task: str
             The name of the task.
+        residuals: bool, optional
+            If True, returns the normalization constants for the residuals.
+            Otherwise, returns the normalization constants for the target variables.
 
         Returns
         -------
@@ -136,11 +142,8 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         stds: torch.Tensor
         """
         # Retrieve the output variables of the task
-        variables = self.get_task_output_variables(task)
-        # Each variable has the form VAR_t, where t is the time step.
-        # The constants to use are then those of VAR.
-        # Note: the variable name can contain a '_' character.
-        variables = ["_".join(var.split("_")[:-1]) for var in variables]
+        variables = self.get_task_output_variables(task, residuals=residuals)
+        # Retrieve the corresponding normalization constants.
         means = torch.tensor(self.tabular_means[variables].values, dtype=torch.float32)
         stds = torch.tensor(self.tabular_stds[variables].values, dtype=torch.float32)
         return means, stds
