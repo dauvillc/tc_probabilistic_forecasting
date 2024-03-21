@@ -4,11 +4,9 @@ torch.utils.data.Dataset class. This class is used to yield successive
 steps of a multiple time series, which can be either tabular data or images.
 """
 
-import pandas as pd
 import torch
 from torchvision.transforms import v2
 from torchvision import tv_tensors
-from utils.utils import sshs_category
 
 
 class SuccessiveStepsDataset(torch.utils.data.Dataset):
@@ -82,75 +80,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.past_steps = cfg["experiment"]["past_steps"]
         self.target_steps = cfg["experiment"]["target_steps"]
         self.random_rotations = random_rotations
-        # The output variables are the variables that are included in at least one
-        # tabular task.
-        self.output_columns = set()
-        for task in self.output_tabular_tasks:
-            output_variables = self.output_tabular_tasks[task]["output_variables"]
-            self.output_columns.update(output_variables)
-        self.output_columns = list(self.output_columns)
-
-        # Reset the indices of the trajectories dataframe so that trajectories[i] matches
-        # the i-th sample in the datacubes.
-        self.trajectories.reset_index(inplace=True, drop=True)
-        for datacube in self.datacubes.values():
-            assert (
-                len(self.trajectories) == datacube.shape[0]
-            ), "The number of samples in the trajectories dataframe and in the datacubes must match."
-        assert not trajectories.isna().any().any(), "There are missing values in the trajectories."
-
-        # Every manipulation of the trajectories will be done separately for each storm.
-        grouped_trajs = self.trajectories.groupby("SID")
-        # Create a DataFrame for the input time series. For each input variable V_t, it includes
-        # the columns V_{-P+1}, ..., V_{0}. We also include the columns SID and ISO_TIME, to make
-        # sure input_trajectories has at least one column.
-        self.input_trajectories = pd.DataFrame()
-        for var in self.input_columns + ["SID", "ISO_TIME"]:
-            for i in range(self.past_steps):
-                self.input_trajectories[f"{var}_{-i}"] = grouped_trajs[var].shift(i)
-        # The first P-1 rows of each storm are NaN since there are no previous steps.
-        self.input_trajectories.dropna(inplace=True, axis="index")
-
-        # Create a DataFrame for the output time series. For each output variable V, for each
-        # target time step t, create the column V_t.
-        self.output_trajectories = pd.DataFrame()
-        for var in self.output_columns + ["SID", "ISO_TIME"]:
-            for t in self.target_steps:
-                self.output_trajectories[f"{var}_{t}"] = grouped_trajs[var].shift(-t)
-        # Since we shifted the columns, some rows contain NaNs.
-        self.output_trajectories.dropna(inplace=True, axis="index")
-
-        # Optionally, select only the samples which reach a minimum category over the target steps.
-        if (
-            "vmax" in self.output_tabular_tasks
-            and "train_min_category" in cfg["experiment"]
-            and subset == "train"
-        ):
-            min_category = cfg["experiment"]["train_min_category"]
-            # Compute the max intensity of each sample over the target steps.
-            intensities = self.get_sample_intensities()  # (N, T)
-            max_intensities = intensities.max(dim=1).values
-            # Convert the max intensities to categories.
-            max_categories = sshs_category(max_intensities)
-            # Select the samples which reach at least the minimum category.
-            selected_mask = (max_categories >= min_category).numpy()
-            self.output_trajectories = self.output_trajectories[selected_mask]
-
-        # Since we removed different rows from the input and output trajs, we need to retain only the intersection
-        # of their indices.
-        indices = self.input_trajectories.index.intersection(self.output_trajectories.index)
-        self.input_trajectories = self.input_trajectories.loc[indices]
-        self.output_trajectories = self.output_trajectories.loc[indices]
-        self.trajectory_indices = indices
-        # At this point, there are gaps in the indices of the input_trajectories and output_trajectories.
-        # However we only added columns to those dfs and removed rows, but never modified its Index.
-        # Thus, the indices of self.input_trajectories and self.output_trajectories
-        # are the same and match the indices of the datacubes, meaning that self.input_trajectories[i]
-        # refers to the same storm and time as datacube[i] for each datacube.
-        for t in range(-self.past_steps + 1, 1):
-            self.input_trajectories.drop(columns=[f"SID_{t}", f"ISO_TIME_{t}"], inplace=True)
-        for t in self.target_steps:
-            self.output_trajectories.drop(columns=[f"SID_{t}", f"ISO_TIME_{t}"], inplace=True)
 
         if self.random_rotations:
             # Create the random transformations to apply to the datacubes.
@@ -217,7 +146,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         return means, stds
 
     def __len__(self):
-        return len(self.trajectory_indices)
+        return self.trajectories.shape[0]
 
     def __getitem__(self, idx):
         """
@@ -238,7 +167,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         for var in self.input_columns:
             cols = [f"{var}_{i}" for i in range(-self.past_steps + 1, 1)]
             input_time_series[var] = torch.tensor(
-                self.input_trajectories[cols].iloc[idx].values, dtype=torch.float32
+                self.trajectories[cols].iloc[idx].values, dtype=torch.float32
             )
 
         # Retrieve the output time series.
@@ -247,11 +176,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             # Group the output variables of the task into a single tensor.
             output_variables = self.get_task_output_variables(task)
             output_time_series[task] = torch.tensor(
-                self.output_trajectories[output_variables].iloc[idx].values, dtype=torch.float32
+                self.trajectories[output_variables].iloc[idx].values, dtype=torch.float32
             )
 
         # Retrieve the index of the sample in the datacubes (i.e. the index of the storm at time t).
-        datacube_index = self.trajectory_indices[idx]
+        datacube_index = self.trajectories.index[idx]
 
         # Retrieve the input datacubes.
         input_datacubes = {}

@@ -12,6 +12,8 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from utils.utils import hours_to_sincos
+from utils.preprocessing import grouped_shifts_and_deltas
 from utils.train_test_split import train_val_test_split
 
 
@@ -45,8 +47,8 @@ if __name__ == '__main__':
     # === OPTIONAL SUBSAMPLING ===
     # If the dataset is too large, we can subsample it by selecting a random subset of the
     # storms. This is done by specifying the 'tcir/subsample' key in the config file.
-    if cfg['tcir']['subsample']:
-        fraction = cfg['tcir']['subsample_fraction']
+    if cfg['preprocessing']['subsample']:
+        fraction = cfg['preprocessing']['subsample_fraction']
         # Select a random subset of the storms
         sids = data_info['SID'].unique()
         sids = np.random.choice(sids, size=int(len(sids) * fraction), replace=False)
@@ -158,13 +160,19 @@ if __name__ == '__main__':
     # NaN values at the border won't be interpolated, we'll fill them with zeros.
     datacube = datacube.fillna(0)
 
+    # === FEATURE ENGINEERING ===
+    # Add the time of the day as a feature
+    embedded_time = hours_to_sincos(data_info['ISO_TIME'])
+    data_info['HOUR_SIN'] = embedded_time[:, 0]
+    data_info['HOUR_COS'] = embedded_time[:, 1]
+
     # === TRAIN/VAL/TEST SPLIT ===
     train_idx, val_idx, test_idx = train_val_test_split(data_info)
     print("Train/val/test split:", f"{len(train_idx)} / {len(val_idx)} / {len(test_idx)}")
     # Select the corresponding entries in the info
-    train_info = data_info.iloc[train_idx]
-    val_info = data_info.iloc[val_idx]
-    test_info = data_info.iloc[test_idx]
+    train_info = data_info.loc[train_idx]
+    val_info = data_info.loc[val_idx]
+    test_info = data_info.loc[test_idx]
     # Select the corresponding entries in the datacube
     train_datacube = datacube.isel(sid_time=train_info.index)
     val_datacube = datacube.isel(sid_time=val_info.index)
@@ -173,6 +181,21 @@ if __name__ == '__main__':
     train_info = train_info.reset_index(drop=True)
     val_info = val_info.reset_index(drop=True)
     test_info = test_info.reset_index(drop=True)
+
+    # === SHIFTED FEATURES CONSTRUCTION ===
+    # For all variables that will either be used as context or target, we'll add columns
+    # giving their values shifted by a given set of time steps. We'll also add columns
+    # giving the difference between the shifted values and the original values.
+    # Example: INTENSITY_2 is the intensity 2 time steps in the future, and DELTA_INTENSITY_2
+    # is the difference between INTENSITY_2 and INTENSITY.
+    # 1. Load the set of time steps to shift the variables
+    shifts = cfg['preprocessing']['steps']
+    # 2. Fixed set of variables to shift
+    shifted_vars = ['INTENSITY', 'LON', 'LAT', 'R35_4qAVG', 'MSLP', 'HOUR_COS', 'HOUR_SIN']
+    # 3. Shift the variables and compute the deltas
+    train_info = grouped_shifts_and_deltas(train_info, 'SID', shifted_vars, shifts)
+    val_info = grouped_shifts_and_deltas(val_info, 'SID', shifted_vars, shifts)
+    test_info = grouped_shifts_and_deltas(test_info, 'SID', shifted_vars, shifts)
 
     # === NORMALIZATION ===
     # Normalize the info and datacube using constants computed on the training set
@@ -202,9 +225,9 @@ if __name__ == '__main__':
     train_datacube.to_netcdf(save_dir / 'train' / 'datacube.nc')
     val_datacube.to_netcdf(save_dir / 'val' / 'datacube.nc')
     test_datacube.to_netcdf(save_dir / 'test' / 'datacube.nc')
-    train_info.to_csv(save_dir / 'train' / 'info.csv', index=False)
-    val_info.to_csv(save_dir / 'val' / 'info.csv', index=False)
-    test_info.to_csv(save_dir / 'test' / 'info.csv', index=False)
+    train_info.to_csv(save_dir / 'train' / 'info.csv', index=True)
+    val_info.to_csv(save_dir / 'val' / 'info.csv', index=True)
+    test_info.to_csv(save_dir / 'test' / 'info.csv', index=True)
     # Save the normalization constants
     info_mean.to_csv(save_dir / 'info_mean.csv', header=False)
     info_std.to_csv(save_dir / 'info_std.csv', header=False)

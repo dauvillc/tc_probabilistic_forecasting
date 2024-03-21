@@ -218,7 +218,7 @@ def load_tcir(subset):
     # Load the datacube
     tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
     # Load the info
-    tcir_info = pd.read_csv(dir_path / subset / "info.csv", parse_dates=["ISO_TIME"])
+    tcir_info = pd.read_csv(dir_path / subset / "info.csv", parse_dates=["ISO_TIME"], index_col=0)
     # Set the index to sid_time
     tcir_datacube = tcir_datacube.set_index(sid_time=["sid", "time"])
     # Load the mean and std of the info

@@ -7,12 +7,18 @@ paths:
   hursat_b1_preprocessed: /scratch/cdauvill/hursat-b1-preprocessed/
   hursat_b1_cache: /scratch/cdauvill/hursat-b1-preprocessed/cache.nc
   tcir: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
-  tcir_preprocessed_dir: /home/cdauvill/scratch/cdauvill/tcir/preprocessed
+  tcir_preprocessed_dir: /home/cdauvill/scratch/cdauvill/tcir/preprocessed_small
   checkpoints: /home/cdauvill/scratch/checkpoints/
 
-tcir:
+preprocessing:
+  # Which steps will be included either for the contextual variables
+  # or the target.
+  # For examples, [-1., 0, 1.] means for every sample, the variables
+  # (either contextual or targets) will be included for time steps
+  # t-1, t, and t+1.
+  steps: [-3, -2, -1, 0, 1, 2, 3, 4]
   # Fraction of the tcir dataset to use (use less data for debugging)
-  subsample: false  # true / false
+  subsample: true  # true / false
   subsample_fraction: 0.1
   # Minimum SSHS category to include
   min_category: -1.

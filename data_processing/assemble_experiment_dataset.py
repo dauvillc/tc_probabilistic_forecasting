@@ -42,11 +42,6 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset):
     print(f"TCIR {subset} dataset loaded")
     print("Memory usage: {:.2f} GB".format(tcir_datacube.nbytes / 1e9))
 
-    # Add a column with the sin/cos encoding of the hours, which will be used as input
-    # to the model
-    sincos_hours = hours_to_sincos(tcir_info["ISO_TIME"])
-    tcir_info["HOUR_SIN"], tcir_info["HOUR_COS"] = sincos_hours[:, 0], sincos_hours[:, 1]
-
     # Convert the datacube to a tensor
     tcir_datacube = datacube_to_tensor(tcir_datacube)
 
