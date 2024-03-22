@@ -119,7 +119,9 @@ class DeterministicDistribution(PredictionDistribution):
         Given a deterministic distribution that always outputs y, the CDF is defined as
         1 for y_pred >= y, and 0 otherwise.
         """
-        return torch.heaviside(y - y_pred, torch.tensor([1.0]))
+        # Add a batch dimension to y_pred if needed
+        y, y_pred = add_batch_dim(y, y_pred)
+        return torch.heaviside(y - y_pred.squeeze(-1), torch.tensor([1.0]))
 
     def inverse_cdf(self, y, u):
         """
