@@ -86,7 +86,7 @@ class StormPredictionModel(pl.LightningModule):
         head_reduction_factor = self.model_cfg["prediction_head"]["reduction_factor"]
         for task, task_params in tabular_tasks.items():
             self.location_head[task] = PredictionHead(
-                latent_size, context_size, 1, len(self.target_steps), head_reduction_factor
+                latent_size, context_size, 1, 1, head_reduction_factor
             )
 
         # Create the residual heads which will predict the distribution of the residual
@@ -184,12 +184,12 @@ class StormPredictionModel(pl.LightningModule):
         # Compute the metrics for each task
         for task, task_params in self.tabular_tasks.items():
             # Compute the distribution of the final predictions (Location + Residual)
-            predictions = predictions.final_predictions(task)
+            task_preds = predictions.final_predictions(task)
             # Compute the final targets (Location + Residual)
             targets = true_locations[task] + true_residuals[task]
             for metric_name, metric in task_params["distrib_obj"].metrics.items():
                 # Compute the metric in the original scale
-                metric_value = metric(predictions, targets)
+                metric_value = metric(task_preds, targets)
                 self.log(
                     f"val_{metric_name}_{task}",
                     metric_value,
@@ -203,7 +203,7 @@ class StormPredictionModel(pl.LightningModule):
         """
         Implements a prediction step.
         """
-        past_variables, past_datacubes, targets = batch
+        past_variables, past_datacubes, true_locations, true_residuals = batch
         predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions
         predictions = predictions.denormalize(self.dataset)

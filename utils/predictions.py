@@ -3,6 +3,9 @@ Implements the ResidualPrediction class, which allows to manage
 predictions that are split between location and residuals.
 """
 
+import os
+import torch
+from pathlib import Path
 from distributions.deterministic import DeterministicDistribution
 
 
@@ -34,7 +37,7 @@ class ResidualPrediction:
         # Determinstic distribution object which will be used to treat the locations
         self.loc_distrib = DeterministicDistribution()
 
-    def add(self, task_name, location, residual_params, distrib):
+    def add(self, task_name, location, residual_params, distrib=DeterministicDistribution()):
         """
         Adds the predictions for a given task.
         Automatically calls the activation function of the residual distribution.
@@ -49,8 +52,9 @@ class ResidualPrediction:
         residual_params: torch.Tensor
             The parameters of the distribution that predicts the residuals, as a tensor
             of shape (batch_size, T, n_parameters).
-        distrib: PredictionDistribution
-            Distribution used to predict the residuals.
+        distrib: PredictionDistribution, optional
+            Distribution used to predict the residuals. Defaults to a deterministic
+            distribution.
 
         Raises
         ------
@@ -108,3 +112,50 @@ class ResidualPrediction:
             (batch_size, T, n_parameters).
         """
         return self.final[task_name]
+
+    def keys(self):
+        return self.locations.keys()
+
+    def save(self, save_dir):
+        """
+        Saves the predictions to disk.
+
+        Parameters
+        ----------
+        save_dir : str
+            The directory where to save the predictions.
+        """
+        save_dir = Path(save_dir)
+        locations_path = save_dir / "locations"
+        residuals_path = save_dir / "residuals"
+        final_path = save_dir / "final"
+        os.makedirs(locations_path, exist_ok=True)
+        os.makedirs(residuals_path, exist_ok=True)
+        os.makedirs(final_path, exist_ok=True)
+        for task_name in self.locations.keys():
+            torch.save(self.locations[task_name], locations_path / f"{task_name}.pt")
+            torch.save(self.residuals[task_name], residuals_path / f"{task_name}.pt")
+            torch.save(self.final[task_name], final_path / f"{task_name}.pt")
+
+    @staticmethod
+    def cat(predictions):
+        """
+        Concatenates multiple ResidualPrediction objects.
+
+        Parameters
+        ----------
+        predictions : list of ResidualPrediction
+            The list of predictions to concatenate.
+
+        Returns
+        -------
+        ResidualPrediction
+            The concatenated predictions.
+        """
+        cat_preds = ResidualPrediction()
+        for task_name in predictions[0].keys():
+            locations = torch.cat([pred.locations[task_name] for pred in predictions], dim=0)
+            residuals = torch.cat([pred.residuals[task_name] for pred in predictions], dim=0)
+            distrib = predictions[0].distribs[task_name]
+            cat_preds.add(task_name, locations, residuals, distrib)
+        return cat_preds

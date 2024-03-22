@@ -134,7 +134,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             The name of the task.
         residuals: bool, optional
             If True, returns the normalization constants for the residuals.
-            Otherwise, returns the normalization constants for the target variables.
+            Otherwise, returns the normalization constants for the location at t=0.
 
         Returns
         -------
@@ -142,7 +142,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         stds: torch.Tensor
         """
         # Retrieve the output variables of the task
-        variables = self.get_task_output_variables(task, residuals=residuals)
+        if not residuals:
+            variables = self.get_task_output_variables(task, time_steps=[0])
+        else:   
+            variables = self.get_task_output_variables(task, residuals=True)
         # Retrieve the corresponding normalization constants.
         means = torch.tensor(self.tabular_means[variables].values, dtype=torch.float32)
         stds = torch.tensor(self.tabular_stds[variables].values, dtype=torch.float32)
@@ -179,8 +182,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Retrieve the output time series.
         output_time_series = {}
         for task in self.output_tabular_tasks:
-            # Group the output variables of the task into a single tensor.
-            output_variables = self.get_task_output_variables(task)
+            # We only only want to predict the location of the target at t=0. For the
+            # other time steps, we predict the residuals between t and 0.
+            output_variables = self.get_task_output_variables(task, time_steps=[0])
             output_time_series[task] = torch.tensor(
                 self.trajectories[output_variables].iloc[idx].values, dtype=torch.float32
             )
@@ -211,7 +215,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
 
         return input_time_series, input_datacubes, output_time_series, output_residues
 
-    def get_task_output_variables(self, task, residuals=False):
+    def get_task_output_variables(self, task, residuals=False, time_steps=None):
         """
         For a given task name, returns the list of the output variables:
         V_t for every t in target_steps for every V in the task's output_variables.
@@ -223,11 +227,15 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         residuals: bool, optional
             If True, returns the residuals between the target variables and the variable at t=0.
             Otherwise, returns the target variables.
+        time_steps: list of int, optional
+            List of time steps to consider, which must be a subset of self.target_steps.
         """
+        if time_steps is None:
+            time_steps = self.target_steps
         return [
             f"{var}_{t}" if not residuals else f"DELTA_{var}_{t}"
             for var in self.output_tabular_tasks[task]["output_variables"]
-            for t in self.target_steps
+            for t in time_steps
         ]
 
     def target_support(self, variable):
