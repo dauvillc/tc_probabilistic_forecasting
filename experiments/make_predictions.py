@@ -6,15 +6,14 @@ import sys
 
 sys.path.append("./")
 import os
-import torch
 import pytorch_lightning as pl
 import argparse
 import wandb
 from pathlib import Path
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
+from utils.predictions import ResidualPrediction
 from utils.wandb import retrieve_wandb_runs
-from utils.io import write_tensors_dict
 
 
 if __name__ == "__main__":
@@ -70,33 +69,20 @@ if __name__ == "__main__":
     # Compute the predictions on the validation set
     model_predictions = trainer.predict(model, val_loader)
     # Right now, the predictions are stored as a list of batches. Each batch
-    # is a dictionary mapping task -> predictions.
-    predictions = {}
-    for task in model_predictions[0].keys():  # [0] to get the first batch
-        # The predictions can be either a single tensor, or a tuple of tensors
-        # (for the multivariate normal distribution)
-        if isinstance(model_predictions[0][task], tuple):
-            n_tensors = len(model_predictions[0][task])
-            predictions[task] = tuple(
-                torch.cat([batch[task][i] for batch in model_predictions])
-                for i in range(n_tensors)
-            )
-        else:
-            predictions[task] = torch.cat([batch[task] for batch in model_predictions])
-
+    # is a ResidualPrediction object containing the predictions for each task.
+    model_predictions = ResidualPrediction.cat(model_predictions)
     # Save the predictions
-    write_tensors_dict(predictions, save_dir)
+    model_predictions.save(save_dir)
 
-    # Save the targets
+    # Save the targets - we can actually store them as a ResidualPrediction object
+    # since it has the same structure as the predictions.
     print("Saving targets...")
-    targets = {}
-    for task in model_predictions[0].keys():
-        targets[task] = torch.cat([batch_target[task] for _, _, batch_target in val_loader])
-
+    targets = []
+    for _, _, true_locations, true_residuals in val_loader:
+        for task in tasks:
+            targets.append(ResidualPrediction())
+            targets[-1].add(task, true_locations[task], true_residuals[task])
+    targets = ResidualPrediction.cat(targets)
     # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
-    # Remark: the normalization constants were computed on the training set.
-    targets = val_dataset.denormalize_tabular_target(targets)
-    write_tensors_dict(
-        targets,
-        targets_dir,
-    )
+    targets = targets.denormalize(val_dataset)
+    targets.save(targets_dir)

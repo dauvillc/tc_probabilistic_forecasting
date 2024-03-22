@@ -38,12 +38,13 @@ def load_tensors_dict(load_dir):
     load_dir: str
         Path to the directory from which the dictionary will be loaded.
     """
+    device = torch.device("cpu")
     tensors_dict = {}
     for file in os.listdir(load_dir):
         if file.endswith(".pt"):
             print("Loading ", file, " from ", load_dir)
             key = file[:-3]
-            tensor = torch.load(os.path.join(load_dir, file))
+            tensor = torch.load(os.path.join(load_dir, file), device)
             tensors_dict[key] = tensor
     return tensors_dict
 
@@ -69,6 +70,6 @@ def load_predictions_and_targets(run_ids):
     """
     predictions, targets = {}, {}
     for run_id in run_ids:
-        predictions[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "predictions")
-        targets[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "targets")
+        predictions[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "predictions" / "final")
+        targets[run_id] = load_tensors_dict(_PREDS_DIR_ / run_id / "targets" / "final")
     return predictions, targets
