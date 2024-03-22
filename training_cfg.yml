@@ -1,5 +1,5 @@
 experiment:
-  name: qc_new_arch
+  name: test_residual
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -25,7 +25,7 @@ tasks:
   # - "multivariate_normal"
   vmax:
     output_variables: ['INTENSITY']
-    distribution: qc
+    distribution: deterministic
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
@@ -41,7 +41,7 @@ training_settings:
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 32-true
   # Number of workers for the data loading
-  num_workers: 27
+  num_workers: 0
   # Weight decay
   weight_decay: 0.05
   # Whether to enable data augmentation
@@ -58,6 +58,9 @@ training_settings:
   final_lr: 1.0e-8
   beta1: 0.836
   beta2: 0.985
+  # Weight of the residual loss
+  # 0. means no residual loss, 1. means no location loss
+  residual_loss_weight: 0.5
   # If fine-tuning, freeze the encoder
   freeze_encoder:
   # Optionally, specify a single task to train on
@@ -66,10 +69,10 @@ model_hyperparameters:
   spatial_encoder:
     # What type of base block to use (either 'cbam' or 'conv')
     base_block: conv
-    n_blocks: 5
-    base_channels: 8
+    n_blocks: 4
+    base_channels: 4
   temporal_encoder:
-    reduction_factor: 8
-    n_blocks: 3
+    reduction_factor: 16
+    n_blocks: 4
   prediction_head:
-    reduction_factor: 32
+    reduction_factor: 8

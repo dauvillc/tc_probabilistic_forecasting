@@ -63,6 +63,9 @@ class StormPredictionModel(pl.LightningModule):
         self.patch_size = cfg["experiment"]["patch_size"]
         C, P, H, W = input_datacube_shape
 
+        # Weight of the residual loss in the total loss (Default: 0.5)
+        self.residual_loss_weight = self.training_cfg.get("residual_loss_weight", 0.5)
+
         # Create the spatial encoder
         self.spatial_encoder = SpatialEncoder(
             C,
@@ -141,7 +144,9 @@ class StormPredictionModel(pl.LightningModule):
                 on_epoch=True,
             )
             # Sum the losses to get the total loss for the task
-            losses[task] = location_loss + residual_loss
+            losses[task] = (
+                1 - self.residual_loss_weight
+            ) * location_loss + self.residual_loss_weight * residual_loss
         # Compute the total loss
         # In the case of single-task finetuning, the total loss is the loss of the trained task
         if self.training_cfg["trained_task"] is not None:
