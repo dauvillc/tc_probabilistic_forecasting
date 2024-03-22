@@ -114,10 +114,10 @@ if __name__ == "__main__":
 
     # Modifications in case the script is run as part of a sweep
     if args.sweep:
+        current_run = wandb.init(project="tc_prediction", config=cfg)
         # Initialize W&B
-        current_run = wandb.init(project="tc_prediction")
         # Replace the default values of the configuration file by the ones from the sweep
-        cfg = update_dict(cfg, wandb.config)
+        cfg = update_dict(cfg, wandb.config['sweep_parameters'])
     else:
         current_run = wandb.init(project="tc_prediction", name=experiment_cfg["name"])
 
