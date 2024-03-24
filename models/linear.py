@@ -34,12 +34,13 @@ class PredictionHead(nn.Module):
         self.contextual_size = contextual_size
         self.output_vars = output_vars
         self.target_steps = target_steps
-        # Contextual variables embedding
-        self.embedding = nn.Linear(contextual_size, contextual_size)
-        # Linear layers
         hidden_size = input_size // reduction_factor
-        self.linear_1 = nn.Linear(input_size + contextual_size, hidden_size)
-        self.linear_2 = nn.Linear(hidden_size, output_vars * target_steps)
+        # Contextual variables embedding
+        self.embedding = nn.Linear(contextual_size, hidden_size)
+        # Linear layers
+        self.linear_1 = nn.Linear(input_size, hidden_size)
+        self.linear_2 = nn.Linear(hidden_size, hidden_size)
+        self.linear_3 = nn.Linear(hidden_size, output_vars * target_steps)
 
     def forward(self, latent_space, contextual_vars):
         """
@@ -56,11 +57,13 @@ class PredictionHead(nn.Module):
         """
         # Embed the contextual variables
         contextual_vars = torch.selu(self.embedding(contextual_vars))
-        # Concatenate the latent space with the contextual variables
-        x = torch.cat([latent_space, contextual_vars], dim=1)
-        # Apply the linear layers
-        x = torch.selu(self.linear_1(x))
-        x = self.linear_2(x)
+        # Compresse the latent space via the first linear layer
+        x = torch.selu(self.linear_1(latent_space))
+        # Add the contextual variables
+        x = x + contextual_vars
+        # Apply the remaining linear layers
+        x = torch.selu(self.linear_2(x))
+        x = self.linear_3(x)
         # Reshape to (N, T, output_vars)
         x = x.view(-1, self.target_steps, self.output_vars)
         return x
