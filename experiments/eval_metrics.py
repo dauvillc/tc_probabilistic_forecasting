@@ -62,6 +62,18 @@ if __name__ == "__main__":
         required=True,
         help="Name of the evaluation run.",
     )
+    parser.add_argument(
+        "-c",
+        "--color_palette",
+        type=str,
+        default="tab10",
+        help="Name of the color palette to use for the plots.",
+    )
+    parser.add_argument(
+        "--no_errorbar",
+        action="store_true",
+        help="If provided, the error bars will not be displayed.",
+    )
     args = parser.parse_args()
 
     # ======== RUNS CONFIGURATION ======== #
@@ -97,7 +109,7 @@ if __name__ == "__main__":
     # by a the same marker and color across all plots.
     markers = matplotlib_markers(len(args.ids))
     markers = {run_id: marker for run_id, marker in zip(args.ids, markers)}
-    cmap = plt.get_cmap("tab10", len(args.ids))
+    cmap = plt.get_cmap(args.color_palette, len(args.ids))
     colors = {run_id: cmap(k) for k, run_id in enumerate(args.ids)}
 
     # ======== LOAD THE PREDICTIONS AND TARGETS ======== #
@@ -227,7 +239,7 @@ if __name__ == "__main__":
             x="category",
             y=metric_name,
             hue="model",
-            errorbar=("ci", 95),
+            errorbar=("ci", 95) if not args.no_errorbar else None,
             dodge=0.05 if df["model"].nunique() > 1 else False,
             linewidth=1.5,
             markersize=5,
@@ -285,7 +297,7 @@ if __name__ == "__main__":
             )  # (N, T) or (N,) or (T,)
             # Retrieve the predicted time steps.
             exp_cfg = configs[run_id]["experiment"]
-            T = np.array(exp_cfg["target_steps"]) * 6 # 6h time steps
+            T = np.array(exp_cfg["target_steps"]) * 6  # 6h time steps
             for i, t in enumerate(T):
                 # Get the scores of all samples at time t
                 if metric_value.dim() == 1:
@@ -319,7 +331,7 @@ if __name__ == "__main__":
             x="step",
             y=metric_name,
             hue="model",
-            errorbar=("ci", 95),
+            errorbar=("ci", 95) if not args.no_errorbar else None,
             dodge=0.05 if df["model"].nunique() > 1 else False,
             linewidth=1.5,
             markersize=5,
