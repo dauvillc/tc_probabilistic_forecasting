@@ -97,6 +97,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Flag to indicate that the script is run as part of a sweep.",
     )
+    parser.add_argument(
+        "-f",
+        "--fold",
+        type=int,
+        help="Cross-validation fold to use for training.",
+        required=True,
+    )
     args = parser.parse_args()
 
     # Load the training configuration file
@@ -117,7 +124,7 @@ if __name__ == "__main__":
         current_run = wandb.init(project="tc_prediction", config=cfg)
         # Initialize W&B
         # Replace the default values of the configuration file by the ones from the sweep
-        cfg = update_dict(cfg, wandb.config['sweep_parameters'])
+        cfg = update_dict(cfg, wandb.config["sweep_parameters"])
     else:
         current_run = wandb.init(project="tc_prediction", name=experiment_cfg["name"])
 
@@ -125,10 +132,8 @@ if __name__ == "__main__":
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    train_dataset, train_loader = load_dataset(
-        cfg, input_variables, tasks, "train"
-    )
-    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val")
+    train_dataset, train_loader = load_dataset(cfg, input_variables, tasks, "train", fold=args.fold)
+    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val", fold=args.fold)
 
     # ====== W+B LOGGER ====== #
     # Initialize the W+B logger
@@ -143,9 +148,7 @@ if __name__ == "__main__":
     datacube_shape = train_dataset.datacube_shape("tcir")
     # If training from scratch, create a new model
     if experiment_cfg["use-pre-trained-id"] is None:
-        model = StormPredictionModel(
-            datacube_shape, tasks, train_dataset, cfg
-        )
+        model = StormPredictionModel(datacube_shape, tasks, train_dataset, cfg)
     # If fine-tuning, load the model from a previous run
     else:
         # Load the model from a previous run

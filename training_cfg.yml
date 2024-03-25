@@ -1,7 +1,6 @@
 experiment:
   name: test_cross_val
   group: lambda_005
-  fold_index: 0
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -56,10 +55,10 @@ training_settings:
   # 0 or None will be interpreted as no tilting
   loss_tilting: 0
   # Learning-related params
-  initial_lr: 6.e-4
+  initial_lr: 2.8e-4
   final_lr: 1.0e-8
-  beta1: 0.836
-  beta2: 0.985
+  beta1: 0.873
+  beta2: 0.977
   # Weight of the residual loss
   # 0. means no residual loss, 1. means no location loss
   residual_loss_weight: 0.05
@@ -71,10 +70,10 @@ model_hyperparameters:
   spatial_encoder:
     # What type of base block to use (either 'cbam' or 'conv')
     base_block: conv
-    n_blocks: 4
+    n_blocks: 5
     base_channels: 4
   temporal_encoder:
-    reduction_factor: 16
-    n_blocks: 4
+    reduction_factor: 1
+    n_blocks: 0
   prediction_head:
-    reduction_factor: 8
+    reduction_factor: 128

@@ -38,7 +38,7 @@ def load_tcir(subset, fold_index):
     # Retrieve the paths from config.yml
     with open("config.yml") as file:
         config = yaml.safe_load(file)
-    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / f"split_{fold_index}"
+    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / f"fold_{fold_index}"
     # Load the datacube
     tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
     # Load the info
