@@ -198,40 +198,22 @@ if __name__ == "__main__":
     # We need to keep those rows for the splitting
     # so that the index of the dataframe matches the index of the datacube.
 
-    # === TRAIN/VAL/TEST SPLIT ===
+    # === TRAIN/TEST SPLIT ===
     # Split into train/test sets
     train_idx, test_idx = stormwise_train_test_split(data_info, train_size=0.8, test_size=0.2)
     print("Train/test split:", f"{len(train_idx)} / {len(test_idx)}")
-    print("Splitting the training set into K folds...")
     train_info = data_info.loc[train_idx].copy()
     train_datacube = datacube.isel(sid_time=train_idx)
     test_info = data_info.loc[test_idx].copy()
     test_datacube = datacube.isel(sid_time=test_idx)
-    # Split the training set into K folds
-    splits = kfold_split(data_info, n_splits=5)
-    # Deduce the training and validation sets from the splits
-    splits_info = [
-        (data_info.loc[train_idx].copy(), data_info.loc[val_idx].copy())
-        for train_idx, val_idx in splits
-    ]
-    splits_datacube = [
-        (datacube.isel(sid_time=train_idx), datacube.isel(sid_time=val_idx))
-        for train_idx, val_idx in splits
-    ]
     # Reset the index of the dataframes so that they match datacube.isel
     train_info = train_info.reset_index(drop=True)
     test_info = test_info.reset_index(drop=True)
-    for k, (sp_train_info, sp_val_info) in enumerate(splits_info):
-        splits_info[k] = (sp_train_info.reset_index(drop=True), sp_val_info.reset_index(drop=True))
     # We can now remove the rows which contain NaNs due to the shift operation
-    train_info = train_info.dropna(axis='index')
-    test_info = test_info.dropna(axis='index')
-    for k, (sp_train_info, sp_val_info) in enumerate(splits_info):
-        splits_info[k] = (sp_train_info.dropna(axis='index'), sp_val_info.dropna(axis='index'))
-
-    # === NORMALIZATION ===
+    train_info = train_info.dropna(axis="index")
+    test_info = test_info.dropna(axis="index")
+    print("Normalizing the general training and test sets...")
     # Normalize the info and datacube using constants computed on the training set
-    print("Normalizing ...")
     # Only normalize the numeric columns
     numeric_df = train_info.select_dtypes(include=[np.number]).copy()
     numeric_cols = numeric_df.columns
@@ -245,38 +227,11 @@ if __name__ == "__main__":
     train_datacube_std = train_datacube.std(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
     train_datacube = (train_datacube - train_datacube_mean) / train_datacube_std
     test_datacube = (test_datacube - train_datacube_mean) / train_datacube_std
-    # Now, for each fold, normalize the training and validation sets using the training set's mean and std
-    # Store the normalization constants
-    sp_info_means, sp_info_stds = [], []
-    sp_datacube_means, sp_datacube_stds = [], []
-    for k, ((sp_train_info, sp_val_info), (sp_train_datacube, sp_val_datacube)) in enumerate(
-        zip(splits_info, splits_datacube)
-    ):
-        # Info
-        sp_info_mean, sp_info_std = sp_train_info[numeric_cols].mean(), sp_train_info[numeric_cols].std()
-        sp_train_info[numeric_cols] = (sp_train_info[numeric_cols] - sp_info_mean) / sp_info_std
-        sp_val_info[numeric_cols] = (sp_val_info[numeric_cols] - sp_info_mean) / sp_info_std
-        # Datacube
-        sp_datacube_mean = sp_train_datacube.mean(
-            dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
-        )
-        sp_datacube_std = sp_train_datacube.std(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
-        sp_train_datacube = (sp_train_datacube - sp_datacube_mean) / sp_datacube_std
-        sp_val_datacube = (sp_val_datacube - sp_datacube_mean) / sp_datacube_std
-        # Update the splits
-        splits_info[k] = (sp_train_info, sp_val_info)
-        splits_datacube[k] = (sp_train_datacube, sp_val_datacube)
-        # Store the normalization constants
-        sp_info_means.append(sp_info_mean)
-        sp_info_stds.append(sp_info_std)
-        sp_datacube_means.append(sp_datacube_mean)
-        sp_datacube_stds.append(sp_datacube_std)
-
-    # === SAVE THE PREPROCESSED DATA ===
-    print("Saving the preprocessed data...")
+    print("Saving the general training and test sets...")
+    # Save the training set and the test set
     # Retrieve the path to the save directory
     save_dir = Path(cfg["paths"]["tcir_preprocessed_dir"])
-    # Create train/val/test subdirectories if they don't exist
+    # Create train/test subdirectories if they don't exist
     for subdir in ["train", "test"]:
         subdir_path = save_dir / subdir
         subdir_path.mkdir(parents=True, exist_ok=True)
@@ -290,21 +245,55 @@ if __name__ == "__main__":
     info_std.to_csv(save_dir / "info_std.csv", header=False)
     train_datacube_mean.to_netcdf(save_dir / "datacube_mean.nc")
     train_datacube_std.to_netcdf(save_dir / "datacube_std.nc")
-    # Save the splits
-    for k, ((sp_train_info, sp_val_info), (sp_train_datacube, sp_val_datacube)) in enumerate(
-        zip(splits_info, splits_datacube)
-    ):
-        # Create the subdirectories
+    # Free the training and test sets from memory
+    del train_datacube, test_datacube
+
+    # === K-FOLD CROSS-VALIDATION ===
+    # Perform the same operations as above, but for each fold of the training set
+    # Split the training set into K folds
+    splits = kfold_split(data_info, n_splits=cfg["preprocessing"]["n_folds"])
+    for k, (train_idx, val_idx) in enumerate(splits):
+        # Deduce the training and validation sets for the current fold
+        train_info = data_info.loc[train_idx].copy()
+        val_info = data_info.loc[val_idx].copy()
+        train_datacube = datacube.isel(sid_time=train_idx)
+        val_datacube = datacube.isel(sid_time=val_idx)
+        # Reset the index of the dataframes so that they match datacube.isel
+        train_info = train_info.reset_index(drop=True)
+        val_info = val_info.reset_index(drop=True)
+        # We can now remove the rows which contain NaNs due to the shift operation
+        train_info = train_info.dropna(axis="index")
+        val_info = val_info.dropna(axis="index")
+        print(f"Normalizing fold {k}...")
+        # Normalize the info and datacube using constants computed on the training part of the fold
+        numeric_df = train_info.select_dtypes(include=[np.number]).copy()
+        # Info
+        info_mean, info_std = numeric_df.mean(), numeric_df.std()
+        train_info[numeric_cols] = (train_info[numeric_cols] - info_mean) / info_std
+        val_info[numeric_cols] = (val_info[numeric_cols] - info_mean) / info_std
+        # Datacube
+        train_datacube_mean = train_datacube.mean(
+            dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
+        )
+        train_datacube_std = train_datacube.std(
+            dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
+        )
+        train_datacube = (train_datacube - train_datacube_mean) / train_datacube_std
+        val_datacube = (val_datacube - train_datacube_mean) / train_datacube_std
+        print(f"Saving data for fold {k}...")
+        # Specific directory for the fold
+        save_dir_fold = save_dir / f"fold_{k}"
+        # Create the subdirectories if they don't exist
         for subdir in ["train", "val"]:
-            subdir_path = save_dir / f"split_{k}" / subdir
+            subdir_path = save_dir_fold / subdir
             subdir_path.mkdir(parents=True, exist_ok=True)
-        # Save the split
-        sp_train_datacube.to_netcdf(save_dir / f"split_{k}" / "train" / "datacube.nc")
-        sp_val_datacube.to_netcdf(save_dir / f"split_{k}" / "val" / "datacube.nc")
-        sp_train_info.to_csv(save_dir / f"split_{k}" / "train" / "info.csv", index=True)
-        sp_val_info.to_csv(save_dir / f"split_{k}" / "val" / "info.csv", index=True)
+        # Save the sub-training set and the validation set
+        train_datacube.to_netcdf(save_dir_fold / "train" / "datacube.nc")
+        val_datacube.to_netcdf(save_dir_fold / "val" / "datacube.nc")
+        train_info.to_csv(save_dir_fold / "train" / "info.csv", index=True)
+        val_info.to_csv(save_dir_fold / "val" / "info.csv", index=True)
         # Save the normalization constants
-        sp_info_means[k].to_csv(save_dir / f"split_{k}" / "info_mean.csv", header=False)
-        sp_info_stds[k].to_csv(save_dir / f"split_{k}" / "info_std.csv", header=False)
-        sp_datacube_means[k].to_netcdf(save_dir / f"split_{k}" / "datacube_mean.nc")
-        sp_datacube_stds[k].to_netcdf(save_dir / f"split_{k}" / "datacube_std.nc")
+        info_mean.to_csv(save_dir_fold / "info_mean.csv", header=False)
+        info_std.to_csv(save_dir_fold / "info_std.csv", header=False)
+        train_datacube_mean.to_netcdf(save_dir_fold / "datacube_mean.nc")
+        train_datacube_std.to_netcdf(save_dir_fold / "datacube_std.nc")

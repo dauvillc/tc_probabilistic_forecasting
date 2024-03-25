@@ -11,6 +11,8 @@ paths:
   checkpoints: /home/cdauvill/scratch/checkpoints/
 
 preprocessing:
+  # Number of cross-validation folds to create
+  n_folds: 5
   # Which steps will be included either for the contextual variables
   # or the target.
   # For examples, [-1., 0, 1.] means for every sample, the variables
@@ -18,8 +20,8 @@ preprocessing:
   # t-1, t, and t+1.
   steps: [-3, -2, -1, 0, 1, 2, 3, 4]
   # Fraction of the tcir dataset to use (use less data for debugging)
-  subsample: true  # true / false
-  subsample_fraction: 0.1
+  subsample: false  # true / false
+  subsample_fraction: 0.05
   # Minimum SSHS category to include
   min_category: -1.
 
