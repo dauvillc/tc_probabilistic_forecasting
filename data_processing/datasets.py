@@ -12,6 +12,51 @@ from tqdm import tqdm
 from utils.datacube import select_sid_time
 
 
+def load_tcir(subset, fold_index):
+    """
+    Loads the TCIR dataset: https://www.csie.ntu.edu.tw/~htlin/program/TCIR/
+    The dataset must have been preprocessed using scripts/preprocess_tcir.py first.
+    It includes both the images and ground truth labels.
+
+    Parameters
+    ----------
+    subset : str
+        'train', 'val' or 'test'. The subset of the TCIR dataset to load.
+    fold_index : int
+        Which cross-validation fold to load.
+
+    Returns
+    -------
+    tcir_info: pandas DataFrame containing the contextual information and the labels.
+    tcir_datacube: xarray DataArray of dimensions (sid_time, lat, lon, variable),
+        containing the TCIR images.
+    info_mean: pandas Series containing the mean of each variable in tcir_info.
+    info_std: pandas Series containing the standard deviation of each variable in tcir_info.
+    datacube_mean: xarray DataArray containing the mean of each variable in tcir_datacube.
+    datacube_std: xarray DataArray containing the standard deviation of each variable in tcir_datacube.
+    """
+    # Retrieve the paths from config.yml
+    with open("config.yml") as file:
+        config = yaml.safe_load(file)
+    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / f"split_{fold_index}"
+    # Load the datacube
+    tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
+    # Load the info
+    tcir_info = pd.read_csv(dir_path / subset / "info.csv", parse_dates=["ISO_TIME"], index_col=0)
+    # Set the index to sid_time
+    tcir_datacube = tcir_datacube.set_index(sid_time=["sid", "time"])
+    # Load the mean and std of the info
+    info_mean = pd.read_csv(dir_path / "info_mean.csv", header=None, index_col=0).squeeze(
+        "columns"
+    )
+    info_std = pd.read_csv(dir_path / "info_std.csv", header=None, index_col=0).squeeze("columns")
+    # Load the mean and std of the datacube
+    datacube_mean = xr.open_dataarray(dir_path / "datacube_mean.nc")
+    datacube_std = xr.open_dataarray(dir_path / "datacube_std.nc")
+
+    return tcir_info, tcir_datacube, info_mean, info_std, datacube_mean, datacube_std
+
+
 def load_ibtracs_data(path=None):
     """
     Loads the preprocessed IBTrACS data from the given path.
@@ -188,44 +233,3 @@ def load_era5_patches(storms_dataset, load_atmo=True, load_surface=True):
         print(f"Surface patches memory footprint: {surface_patches.nbytes / 1e9} GB.")
 
     return atmo_patches, surface_patches
-
-
-def load_tcir(subset):
-    """
-    Loads the TCIR dataset: https://www.csie.ntu.edu.tw/~htlin/program/TCIR/
-    The dataset must have been preprocessed using scripts/preprocess_tcir.py first.
-    It includes both the images and ground truth labels.
-
-    Parameters
-    ----------
-    subset : str
-        'train', 'val' or 'test'. The subset of the TCIR dataset to load.
-
-    Returns
-    -------
-    tcir_info: pandas DataFrame containing the contextual information and the labels.
-    tcir_datacube: xarray DataArray of dimensions (sid_time, lat, lon, variable),
-        containing the TCIR images.
-    info_mean: pandas Series containing the mean of each variable in tcir_info.
-    info_std: pandas Series containing the standard deviation of each variable in tcir_info.
-    datacube_mean: xarray DataArray containing the mean of each variable in tcir_datacube.
-    datacube_std: xarray DataArray containing the standard deviation of each variable in tcir_datacube.
-    """
-    # Retrieve the paths from config.yml
-    with open("config.yml") as file:
-        config = yaml.safe_load(file)
-    dir_path = Path(config["paths"]["tcir_preprocessed_dir"])
-    # Load the datacube
-    tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
-    # Load the info
-    tcir_info = pd.read_csv(dir_path / subset / "info.csv", parse_dates=["ISO_TIME"], index_col=0)
-    # Set the index to sid_time
-    tcir_datacube = tcir_datacube.set_index(sid_time=["sid", "time"])
-    # Load the mean and std of the info
-    info_mean = pd.read_csv(dir_path / "info_mean.csv", header=None, index_col=0).squeeze('columns')
-    info_std = pd.read_csv(dir_path / "info_std.csv", header=None, index_col=0).squeeze('columns')
-    # Load the mean and std of the datacube
-    datacube_mean = xr.open_dataarray(dir_path / "datacube_mean.nc")
-    datacube_std = xr.open_dataarray(dir_path / "datacube_std.nc")
-
-    return tcir_info, tcir_datacube, info_mean, info_std, datacube_mean, datacube_std

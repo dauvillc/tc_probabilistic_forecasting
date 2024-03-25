@@ -1,5 +1,7 @@
 experiment:
-  name: test_residual
+  name: test_cross_val
+  group: lambda_005
+  fold_index: 0
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -60,7 +62,7 @@ training_settings:
   beta2: 0.985
   # Weight of the residual loss
   # 0. means no residual loss, 1. means no location loss
-  residual_loss_weight: 0.5
+  residual_loss_weight: 0.05
   # If fine-tuning, freeze the encoder
   freeze_encoder:
   # Optionally, specify a single task to train on

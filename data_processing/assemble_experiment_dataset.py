@@ -7,7 +7,6 @@ from data_processing.custom_dataset import SuccessiveStepsDataset
 from data_processing.datasets import load_tcir
 from utils.sampling import inverse_intensity_sampler
 from utils.datacube import datacube_to_tensor
-from utils.utils import hours_to_sincos
 
 
 def load_dataset(cfg, input_variables, tabular_tasks, subset):
@@ -37,7 +36,7 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset):
     # ====== LOAD DATASET ====== #
     # Load the TCIR dataset
     tcir_info, tcir_datacube, info_means, info_stds, datacube_means, datacube_stds = load_tcir(
-        subset
+        subset, fold_index=cfg["fold_index"] if "fold_index" in cfg else 0
     )
     print(f"TCIR {subset} dataset loaded")
     print("Memory usage: {:.2f} GB".format(tcir_datacube.nbytes / 1e9))
