@@ -34,6 +34,7 @@ def retrieve_wandb_runs(run_ids=None, group=None):
     if group is not None:
         runs = api.runs("arches/tc_prediction", filters={"group": group})
         run_ids = [run.id for run in runs]
+        runs = {run.id: run for run in runs}
     # Otherwise, retrieve the runs with the provided ids
     else:
         runs = {}
