@@ -112,6 +112,8 @@ if __name__ == "__main__":
         experiment_cfg = cfg["experiment"]
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
+    # Add the fold to the configuration
+    experiment_cfg["fold"] = args.fold
     # Retrieve the input variables
     input_variables = experiment_cfg["context_variables"]
 
@@ -121,7 +123,7 @@ if __name__ == "__main__":
 
     # Modifications in case the script is run as part of a sweep
     if args.sweep:
-        current_run = wandb.init(project="tc_prediction", config=cfg)
+        current_run = wandb.init(project="tc_prediction", config=cfg, group=experiment_cfg["group"])
         # Initialize W&B
         # Replace the default values of the configuration file by the ones from the sweep
         cfg = update_dict(cfg, wandb.config["sweep_parameters"])
