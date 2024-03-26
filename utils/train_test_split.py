@@ -31,7 +31,7 @@ def kfold_split(trajectories, n_splits=5, random_state=42):
     # Some SIDs are "XXXX_k" to indicate the kth subtrajectory of the storm "XXXX".
     # We want to keep these subtrajectories together in the same split.
     # We'll thus ignore the "_k" suffix while splitting the dataset.
-    merged_sids = np.array(list(set([sid.split('_')[0] for sid in sids])))
+    merged_sids = np.unique(np.array([sid.split('_')[0] for sid in sids]))
     # Perform K-Fold cross-validation on the merged SIDs
     kf = KFold(n_splits=n_splits, random_state=random_state, shuffle=True)
     splits = []
@@ -78,7 +78,7 @@ def stormwise_train_test_split(ibtracs_data, train_size=0.8, test_size=0.2, rand
     # Some SIDs are "XXXX_k" to indicate the kth subtrajectory of the storm "XXXX".
     # We want to keep these subtrajectories together in the same split.
     # We'll thus ignore the "_k" suffix while splitting the dataset.
-    merged_sids = list(set([sid.split('_')[0] for sid in sids]))
+    merged_sids = np.unique(np.array([sid.split('_')[0] for sid in sids]))
 
     # Split the SIDs into train, val and test sets
     train_sids, test_sids = train_test_split(merged_sids,

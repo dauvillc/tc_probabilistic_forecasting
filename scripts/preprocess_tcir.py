@@ -20,8 +20,6 @@ from utils.train_test_split import stormwise_train_test_split, kfold_split
 
 
 if __name__ == "__main__":
-    # Set numpy's random seed for reproducibility
-    np.random.seed(0)
     # Load config file
     with open("config.yml", "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
@@ -57,7 +55,7 @@ if __name__ == "__main__":
         fraction = cfg["preprocessing"]["subsample_fraction"]
         # Select a random subset of the storms
         sids = data_info["SID"].unique()
-        sids = np.random.choice(sids, size=int(len(sids) * fraction), replace=False)
+        sids = np.random.default_rng(42).choice(sids, size=int(len(sids) * fraction), replace=False)
         data_info = data_info[data_info["SID"].isin(sids)]
         # Select the corresponding entries in the datacube
         datacube = datacube.isel(phony_dim_4=data_info.index)
