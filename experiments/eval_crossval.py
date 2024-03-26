@@ -8,6 +8,8 @@ sys.path.append("./")
 import argparse
 import wandb
 import pandas as pd
+import yaml
+from pathlib import Path
 from utils.wandb import retrieve_wandb_runs
 from utils.io import load_predictions_and_targets
 
@@ -37,10 +39,19 @@ if __name__ == "__main__":
     else:
         groups = None
 
+    # Load the path configuration
+    with open("config.yml", "r") as file:
+        config = yaml.safe_load(file)
+
     # =================== RUNS CONFIGURATION =================== #
     # Initialize W&B
     current_run_name = args.name
-    current_run = wandb.init(project="tc_prediction", name=current_run_name, job_type="eval")
+    current_run = wandb.init(
+        project="tc_prediction",
+        name=current_run_name,
+        job_type="eval",
+        dir=config["paths"]["wandb_logs"],
+    )
     # Retrieve the config of each run
     runs, configs, all_tasks = retrieve_wandb_runs(run_ids=args.ids, group=groups)
     run_ids = list(runs.keys())
@@ -50,6 +61,11 @@ if __name__ == "__main__":
     # =================== DATA LOADING =================== #
     # Load the predictions and targets for every run
     all_predictions, all_targets = load_predictions_and_targets(run_ids)
+
+    # ================== PREPARATION =================== #
+    # Create a directory to store the results
+    results_dir = Path("results") / current_run_name
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     # =================== CRPS COMPUTATION =================== #
     # We'll compute the CRPS for each run, on each fold.
@@ -61,8 +77,8 @@ if __name__ == "__main__":
         # Compute the CRPS for the run using the 'CRPS' metric function
         # of the run's PredictionDistribution object
         distrib = all_tasks[run_id]["vmax"]["distrib_obj"]
-        predictions = all_predictions[run_id]['vmax']
-        targets = all_targets[run_id]['vmax']
+        predictions = all_predictions[run_id]["vmax"]
+        targets = all_targets[run_id]["vmax"]
         crps = distrib.metrics["CRPS"](predictions, targets, reduce_mean="all")
         # Store the results in the future columns of the DataFrame
         col_run_id.append(run_id)
@@ -78,4 +94,11 @@ if __name__ == "__main__":
             "crps": col_crps,
         }
     )
-    print(results)
+    # Compute the mean and the std of the CRPS for each group
+    # to obtain a DF (group, mean_crps, std_crps)
+    group_results = results.groupby("group").agg({"crps": ["mean", "std"]})
+    group_results.columns = group_results.columns.droplevel()
+    group_results.columns = ["mean_crps", "std_crps"]
+    group_results = group_results.reset_index()
+    # Save the results to a CSV file
+    results.to_csv(results_dir / "results.csv", index=False)

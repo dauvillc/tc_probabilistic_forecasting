@@ -124,18 +124,27 @@ if __name__ == "__main__":
 
     # Modifications in case the script is run as part of a sweep
     if args.sweep:
-        current_run = wandb.init(project="tc_prediction", config=cfg, group=group)
+        current_run = wandb.init(
+            project="tc_prediction", config=cfg, group=group, dir=config["paths"]["wandb_logs"]
+        )
         # Initialize W&B
         # Replace the default values of the configuration file by the ones from the sweep
         cfg = update_dict(cfg, wandb.config["sweep_parameters"])
     else:
-        current_run = wandb.init(project="tc_prediction", name=experiment_cfg["name"], group=group)
+        current_run = wandb.init(
+            project="tc_prediction",
+            name=experiment_cfg["name"],
+            group=group,
+            dir=config["paths"]["wandb_logs"],
+        )
 
     # ====== TASKS DEFINITION ====== #
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    train_dataset, train_loader = load_dataset(cfg, input_variables, tasks, "train", fold=args.fold)
+    train_dataset, train_loader = load_dataset(
+        cfg, input_variables, tasks, "train", fold=args.fold
+    )
     val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val", fold=args.fold)
 
     # ====== W+B LOGGER ====== #
