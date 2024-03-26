@@ -46,7 +46,9 @@ if __name__ == "__main__":
 
     # ===== DATA LOADING ===== #
     input_variables = cfg["input_variables"]
-    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val")
+    val_dataset, val_loader = load_dataset(
+        cfg, input_variables, tasks, "val", fold=cfg["experiment"]["fold"]
+    )
 
     # ===== MODEL RECONSTUCTION ===== #
     # Retrieve the checkpoint from wandb
