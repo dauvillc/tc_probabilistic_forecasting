@@ -122,7 +122,12 @@ class QuantileCompositeDistribution(PredictionDistribution):
         translated_quantiles : torch.Tensor of shape (N, T, Q)
             The translated quantiles.
         """
-        return predicted_params + x
+        # predicted_params[:, :, 0] is the first quantile, but
+        # predicted_params[:, :, 1:] are the differences between the successive quantiles.
+        # Therefore we only need to add x to the first quantile.
+        result = predicted_params.clone()
+        result[:, :, 0] += x.squeeze(-1)
+        return result
 
     def _preprocess_input(self, predicted_params, x):
         """
