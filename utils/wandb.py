@@ -15,9 +15,9 @@ def retrieve_wandb_runs(run_ids=None, group=None):
     ----------
     run_ids : list of str, optional
         The ids of the runs to retrieve.
-    group: str, optional
-        The group of runs to retrieve. Exactly one of `run_ids` and `group`
-        must be provided.
+    groups: str or list, optional
+        If str, the name of the group to retrieve. If list, the names of the
+        groups to retrieve. Cannot be provided together with `run_ids`.
 
     Returns
     -------
@@ -30,9 +30,14 @@ def retrieve_wandb_runs(run_ids=None, group=None):
     if run_ids is not None and group is not None:
         raise ValueError("Only one of `run_ids` and `group` should be provided.")
     api = wandb.Api()
-    # If a group is provided, retrieve the runs in the group
+    # If a group is provided, retrieve the runs in the group(s)
     if group is not None:
-        runs = api.runs("arches/tc_prediction", filters={"group": group})
+        if type(group) is not list:
+            group = [group]
+        # Retrieve the runs in each group
+        runs = []
+        for g in group:
+            runs += api.runs("arches/tc_prediction", filters={"group": g})
         run_ids = [run.id for run in runs]
         runs = {run.id: run for run in runs}
     # Otherwise, retrieve the runs with the provided ids

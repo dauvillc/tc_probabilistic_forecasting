@@ -9,7 +9,10 @@ import argparse
 import wandb
 import pandas as pd
 import yaml
+import seaborn as sns
+import matplotlib.pyplot as plt
 from pathlib import Path
+from utils.utils import sshs_category
 from utils.wandb import retrieve_wandb_runs
 from utils.io import load_predictions_and_targets
 
@@ -35,7 +38,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.groups is not None:
         args.ids = None
-        groups = args.groups[0]
+        groups = args.groups
     else:
         groups = None
 
@@ -70,27 +73,37 @@ if __name__ == "__main__":
     # =================== CRPS COMPUTATION =================== #
     # We'll compute the CRPS for each run, on each fold.
     # We'll store it in a DataFrame with the following columns:
-    # run_id, group, fold, crps
+    # run_id, group, fold, time step, category, CRPS
     # Lists to store the columns of the DataFrame
     col_run_id, col_group, col_fold, col_crps = [], [], [], []
+    col_time, col_category = [], []
     for run_id in run_ids:
         # Compute the CRPS for the run using the 'CRPS' metric function
         # of the run's PredictionDistribution object
         distrib = all_tasks[run_id]["vmax"]["distrib_obj"]
         predictions = all_predictions[run_id]["vmax"]
         targets = all_targets[run_id]["vmax"]
-        crps = distrib.metrics["CRPS"](predictions, targets, reduce_mean="all")
+        # Do not compute the average: obtain the CRPS for each sample and each time step
+        crps = distrib.metrics["CRPS"](predictions, targets, reduce_mean="none")  # (N, T)
+        N, T = crps.shape
+        # Compute the SSHS category for each target
+        targets_cat = sshs_category(targets.view(-1)).view(N, T)
         # Store the results in the future columns of the DataFrame
-        col_run_id.append(run_id)
-        col_group.append(runs[run_id].group)
-        col_fold.append(configs[run_id]["experiment"]["fold"])
-        col_crps.append(crps)
+        col_run_id += [run_id] * N * T
+        col_group += [runs[run_id].group] * N * T
+        col_fold += [configs[run_id]["experiment"]["fold"]] * N * T
+        for i, t in enumerate(configs[run_id]['experiment']['target_steps']):
+            col_crps += crps[:, i].tolist()
+            col_category += targets_cat[:, i].tolist()
+            col_time += [6 * t] * N  # 1 time step = 6 hours
     # Assemble the DataFrame
     results = pd.DataFrame(
         {
             "run_id": col_run_id,
             "group": col_group,
             "fold": col_fold,
+            "time_step": col_time,
+            "category": col_category,
             "crps": col_crps,
         }
     )
@@ -102,3 +115,21 @@ if __name__ == "__main__":
     group_results = group_results.reset_index()
     # Save the results to a CSV file
     results.to_csv(results_dir / "results.csv", index=False)
+
+    # ================== PLOTTING =================== #
+    # Plot the CRPS for each time step, grouped by group
+    sns.set_theme(style="darkgrid")
+    fig, ax = plt.subplots()
+    sns.boxplot(data=results, x='time_step', y='crps', hue='group', ax=ax)
+    ax.set_title('CRPS over lead time')
+    ax.set_xlabel('Lead time (hours)')
+    ax.set_ylabel('CRPS')
+    plt.savefig(results_dir / 'crps_lead_time.png')
+
+    # Plot the CRPS for each SSHS category, grouped by group
+    fig, ax = plt.subplots()
+    sns.boxplot(data=results, x='category', y='crps', hue='group', ax=ax)
+    ax.set_title('CRPS over SSHS category')
+    ax.set_xlabel('SSHS category')
+    ax.set_ylabel('CRPS')
+    plt.savefig(results_dir / 'crps_category.png')
