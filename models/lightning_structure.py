@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 from models.spatial_encoder import SpatialEncoder
 from models.temporal_encoder import TemporalEncoder
 from models.linear import PredictionHead, MultivariatePredictionHead
+from loss_functions.weighted_loss import WeightedLoss
 from utils.predictions import ResidualPrediction
 
 
@@ -61,6 +62,7 @@ class StormPredictionModel(pl.LightningModule):
         past_steps = cfg["experiment"]["past_steps"]
         self.target_steps = cfg["experiment"]["target_steps"]
         self.patch_size = cfg["experiment"]["patch_size"]
+        self.use_weighted_loss = cfg["training_settings"]["use_weighted_loss"]
         C, P, H, W = input_datacube_shape
 
         # Weight of the residual loss in the total loss (Default: 0.5)
@@ -111,6 +113,12 @@ class StormPredictionModel(pl.LightningModule):
                     head_reduction_factor,
                 )
 
+        # Create the WeightedLoss object if needed
+        if self.use_weighted_loss:
+            self.weighted_loss = WeightedLoss(
+                self.dataset, plot_weights="figures/weighted_loss.png"
+            )
+
     def compute_losses(self, batch, train_or_val="train"):
         """
         Computes the losses for a single batch (subfunction of training_step
@@ -118,7 +126,9 @@ class StormPredictionModel(pl.LightningModule):
         """
         past_variables, past_datacubes, target_locations, target_residuals = batch
         predictions = self.forward(past_variables, past_datacubes)
-        reduce_mean = "all"
+        # Defines if we directly retrieve the avg loss, or if we first get the loss for each
+        # sample and only average them over the time dimension.
+        reduce_mean = "time" if self.use_weighted_loss else "all"
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
@@ -126,16 +136,34 @@ class StormPredictionModel(pl.LightningModule):
             location_loss = predictions.loc_distrib.loss_function(
                 predictions.locations[task], target_locations[task], reduce_mean=reduce_mean
             )
-            # Log the loss
+            # Loss for the residual prediction (predict Y_t - Y_0)
+            residual_loss = predictions.distribs[task].loss_function(
+                predictions.residuals[task], target_residuals[task], reduce_mean=reduce_mean
+            )
+            # Sum the losses to get the total loss for the task
+            losses[task] = (
+                1 - self.residual_loss_weight
+            ) * location_loss + self.residual_loss_weight * residual_loss
+            # Apply the weighted loss if needed
+            if self.use_weighted_loss:
+                # Retrieve the actual intensities by:
+                # 1. Denormalizing the residuals and locations
+                intensities = ResidualPrediction()
+                intensities.add("vmax", target_locations['vmax'],
+                                target_residuals['vmax'])
+                intensities = intensities.denormalize(self.dataset)
+                # 2. Adding the residuals to the locations to get the complete targets
+                intensities = intensities.final_predictions("vmax")
+                # 3. Apply the weighted loss
+                losses[task] = self.weighted_loss(losses[task], intensities)
+                # 4. Reduce the location and residual losses to log them
+                location_loss, residual_loss = location_loss.mean(), residual_loss.mean()
+            # Log the losses
             self.log(
                 f"{train_or_val}_location_loss_{task}",
                 location_loss,
                 on_step=False,
                 on_epoch=True,
-            )
-            # Loss for the residual prediction (predict Y_t - Y_0)
-            residual_loss = predictions.distribs[task].loss_function(
-                predictions.residuals[task], target_residuals[task], reduce_mean=reduce_mean
             )
             self.log(
                 f"{train_or_val}_residual_loss_{task}",
@@ -143,10 +171,6 @@ class StormPredictionModel(pl.LightningModule):
                 on_step=False,
                 on_epoch=True,
             )
-            # Sum the losses to get the total loss for the task
-            losses[task] = (
-                1 - self.residual_loss_weight
-            ) * location_loss + self.residual_loss_weight * residual_loss
         # Compute the total loss
         # In the case of single-task finetuning, the total loss is the loss of the trained task
         if self.training_cfg["trained_task"] is not None:
@@ -179,8 +203,9 @@ class StormPredictionModel(pl.LightningModule):
         past_variables, past_datacubes, true_locations, true_residuals = batch
         predictions = self.forward(past_variables, past_datacubes)
 
-        # Before computing the metrics, we'll denormalize the targets and predictions, so that metrics are
-        # computed in the original scale. The constants are stored in the dataset object.
+        # Before computing the metrics, we'll denormalize the targets and predictions,
+        # so that metrics are computed in the original scale.
+        # The constants are stored in the dataset object.
         true_locations = self.dataset.denormalize_tabular_target(true_locations)
         true_residuals = self.dataset.denormalize_tabular_target(true_residuals, residuals=True)
         # Denormalize the predictions

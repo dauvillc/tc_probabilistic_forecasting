@@ -47,6 +47,14 @@ class WeightedLoss:
         self.scale, self.shape = scale, shape
         # Create a torch distribution from the fitted parameters.
         distribution = Weibull(scale=scale, concentration=shape)
+        # We now need to compute the integral of 1 / pdf over the whole support,
+        # so that we can normalize the weights.
+        # We'll use the trapezoidal rule to approximate the integral, which won't
+        # be a problem as we can use a large number of points since we'll only do
+        # this once.
+        x = torch.linspace(1, max(max_intensities), 1000)
+        y = distribution.log_prob(x).exp()
+        self.weights_integral = torch.trapz(1 / y, dx=x[1] - x[0])
 
         # Test the goodness of fit if requested
         if test_goodness_of_fit:
@@ -76,7 +84,7 @@ class WeightedLoss:
             y = distribution.log_prob(x).exp().numpy()
             ax1.plot(x, y, label="Fitted distribution")
             # Plot the weights
-            ax2.plot(x, 1 / y, "r.", label="Weights")
+            ax2.plot(x, (1 / y) / self.weights_integral, "r.", label="Weights")
             # Disable the grid for the weights
             ax2.grid(False)
             ax1.set_xlabel("Max intensity")
@@ -106,11 +114,6 @@ class WeightedLoss:
             The loss value.
         """
         device = loss_values.device
-        # The intensities taken from the batch are normalized, so we need to
-        # multiply them by the normalization constant to get the actual intensities
-        means, stds = self.train_dataset.get_normalization_constants("vmax")
-        means, stds = means.to(device), stds.to(device)
-        intensities = intensities * stds + means
         # Now take the max intensity over all time steps
         intensities, _ = torch.max(intensities, dim=1)
         # Shift the intensities so that the minimum is 1.
@@ -122,7 +125,7 @@ class WeightedLoss:
         )
         probas = distribution.log_prob(intensities).exp()
         # Compute the weights using the fitted distribution
-        weights = 1 / probas
+        weights = (1 / probas) / self.weights_integral
         # Apply the weights to the loss values
         weighted_loss = loss_values * weights
         if reduce_mean:

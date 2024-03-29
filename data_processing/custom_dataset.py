@@ -260,7 +260,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         Returns the number of contextual variables.
         """
-        return len(self.input_columns) * self.past_steps
+        return len(self.input_columns) * self.past_steps 
 
     def get_sample_intensities(self):
         """
@@ -277,7 +277,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             raise ValueError("The task 'vmax' must be enabled to call get_sample_intensities.")
         vmax_target = self.get_task_output_variables("vmax")
         intensities = torch.tensor(
-            self.output_trajectories[vmax_target].values, dtype=torch.float32
+            self.trajectories[vmax_target].values, dtype=torch.float32
         )
         # Denormalize the intensities
         intensities = self.denormalize_tabular_target({"vmax": intensities})["vmax"]
