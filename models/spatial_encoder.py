@@ -2,16 +2,15 @@
 Implements the SpatialEncoder class.
 """
 
+import torch
 import torch.nn as nn
-from models.cnn3d import DownsamplingBlock3D
+from models.cnn2d import DownsamplingBlock2D
 
 
 class SpatialEncoder(nn.Module):
     """
     The spatial encoder separately encodes the input images of a time series into lower-dimensional
     representations.
-    In order to apply the encoder to multiple time steps at once, it is implemented as a 3D CNN
-    with a kernel size of 1 over the time dimension.
 
     Parameters
     ----------
@@ -41,8 +40,8 @@ class SpatialEncoder(nn.Module):
         for i in range(n_blocks):
             out_channels = base_channels * 2**i
             self.blocks.append(
-                DownsamplingBlock3D(
-                    in_channels, out_channels, base_block, (1, kernel_size, kernel_size)
+                DownsamplingBlock2D(
+                    in_channels, out_channels, base_block, kernel_size
                 )
             )
             in_channels = out_channels
@@ -61,9 +60,17 @@ class SpatialEncoder(nn.Module):
         torch.Tensor
             Output tensor of shape (N, C, T, H', W').
         """
-        for block in self.blocks:
-            x = block(x)
-        return x
+        # Split the input tensor along the time dimension
+        x = [x[:, :, t] for t in range(x.size(2))] 
+        # Apply the successive blocks to each timeframe
+        output = []
+        for xt in x:
+            for block in self.blocks:
+                xt = block(xt)
+            output.append(xt)
+        # Concatenate the outputs along the time dimension
+        output = torch.stack(output, dim=2)
+        return output
 
     def output_size(self, input_size):
         """
@@ -80,8 +87,7 @@ class SpatialEncoder(nn.Module):
             Size of the output tensor, as a tuple (C', H', W').
         """
         # Compute the size after each downsampling block
-        size = (input_size[0], 1, input_size[1], input_size[2])
+        size = input_size
         for block in self.blocks:
             size = block.output_size(size)
-
-        return (size[0], size[2], size[3])
+        return size
