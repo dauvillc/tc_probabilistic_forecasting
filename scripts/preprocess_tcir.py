@@ -13,8 +13,9 @@ import yaml
 import xarray as xr
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from tqdm import tqdm
-from utils.utils import hours_to_sincos
+from utils.utils import hours_to_sincos, sshs_category_array
 from utils.preprocessing import grouped_shifts_and_deltas
 from utils.train_test_split import stormwise_train_test_split, kfold_split
 
@@ -55,7 +56,9 @@ if __name__ == "__main__":
         fraction = cfg["preprocessing"]["subsample_fraction"]
         # Select a random subset of the storms
         sids = data_info["SID"].unique()
-        sids = np.random.default_rng(42).choice(sids, size=int(len(sids) * fraction), replace=False)
+        sids = np.random.default_rng(42).choice(
+            sids, size=int(len(sids) * fraction), replace=False
+        )
         data_info = data_info[data_info["SID"].isin(sids)]
         # Select the corresponding entries in the datacube
         datacube = datacube.isel(phony_dim_4=data_info.index)
@@ -107,6 +110,15 @@ if __name__ == "__main__":
 
     # Finally, we'll add a coordinate for the variable dimension
     datacube = datacube.assign_coords(variable=("variable", ["IR", "PMW"]))
+    
+    # Plot the histogram of the pixel values for each channel
+    # Set the y-axis to log scale
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    for k, var in enumerate(["IR", "PMW"]):
+        datacube.sel(variable=var).plot.hist(ax=axes[k], bins=100)
+        axes[k].set_title(f"{var} channel")
+        axes[k].set_yscale("log")
+    plt.savefig('figures/pixel_histograms.png')
 
     # === OUTLIERS AND MISSING VALUES ==== (SEE NOTEBOOK FOR EXPLAINATIONS)
     print("Processing outliers and missing values...")
@@ -168,7 +180,7 @@ if __name__ == "__main__":
     # Reset the index of the tabular data, so that it matches that of the datacube
     data_info = data_info.reset_index(drop=True)
     # We can now interpolate the partially-NaN images
-    datacube = datacube.interpolate_na("h_pixel_offset", method="nearest")
+    datacube = datacube.ffill("h_pixel_offset")
     # NaN values at the border won't be interpolated, we'll fill them with zeros.
     datacube = datacube.fillna(0)
 
@@ -177,6 +189,10 @@ if __name__ == "__main__":
     embedded_time = hours_to_sincos(data_info["ISO_TIME"])
     data_info["HOUR_SIN"] = embedded_time[:, 0]
     data_info["HOUR_COS"] = embedded_time[:, 1]
+
+    # === ADDITIONAL TARGETS ===
+    # Add the SSHS category as a target
+    data_info["SSHS"] = sshs_category_array(data_info["INTENSITY"])
 
     # === SHIFTED FEATURES CONSTRUCTION ===
     # For all variables that will either be used as context or target, we'll add columns
@@ -187,7 +203,7 @@ if __name__ == "__main__":
     # 1. Load the set of time steps to shift the variables
     shifts = cfg["preprocessing"]["steps"]
     # 2. Fixed set of variables to shift and compute deltas
-    shifted_vars = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP", "HOUR_COS", "HOUR_SIN"]
+    shifted_vars = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP", "SSHS", "HOUR_COS", "HOUR_SIN"]
     delta_cols = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP"]
     # 3. Shift the variables and compute the deltas
     data_info = grouped_shifts_and_deltas(data_info, "SID", shifted_vars, delta_cols, shifts)
@@ -195,6 +211,16 @@ if __name__ == "__main__":
     # max(max(shifts), 0) rows, as their is no data to shift.
     # We need to keep those rows for the splitting
     # so that the index of the dataframe matches the index of the datacube.
+
+    # === RAPID INTENSIFICATION LABEL ===
+    # Rapid Intensification (RI) is defined by the NHC as an increase in MSW of at least 30 kt
+    # in 24h. We'll add a binary label for RI, but at each time step. The RI label at t will
+    # be 1 if Y_t - Y_0 >= (30 / 24) * t, where Y_t is the intensity at time t.
+    # We'll use the DELTA_INTENSITY_t columns.
+    for t in [s for s in shifts if s > 0]:
+        data_info[f"RI_{t}"] = (data_info[f"DELTA_INTENSITY_{t}"] >= (30 / 24) * (t * 6)).astype(
+            int
+        )
 
     # === TRAIN/TEST SPLIT ===
     # Split into train/test sets
@@ -212,14 +238,18 @@ if __name__ == "__main__":
     test_info = test_info.dropna(axis="index")
     print("Normalizing the general training and test sets...")
     # Normalize the info and datacube using constants computed on the training set
-    # Only normalize the numeric columns
+    # Select a set of columns which won't be normalized (e.g. categorical columns)
+    # Non-numeric columns will not be normalized
+    # Only indicate the original name, e.g. "SSHS", not "SSHS_1", "SSHS_2", etc.
+    non_normalized_cols = ["SSHS"]
     numeric_df = train_info.select_dtypes(include=[np.number]).copy()
-    numeric_cols = numeric_df.columns
+    normalized_cols = [col for col in numeric_df.columns if col not in non_normalized_cols]
+    numeric_df = numeric_df[normalized_cols]
     # First, normalize the whole training set and test set using the training set's mean and std
     # Info
     info_mean, info_std = numeric_df.mean(), numeric_df.std()
-    train_info[numeric_cols] = (train_info[numeric_cols] - info_mean) / info_std
-    test_info[numeric_cols] = (test_info[numeric_cols] - info_mean) / info_std
+    train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
+    test_info[normalized_cols] = (test_info[normalized_cols] - info_mean) / info_std
     # Datacube
     train_datacube_mean = train_datacube.mean(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
     train_datacube_std = train_datacube.std(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
@@ -263,12 +293,14 @@ if __name__ == "__main__":
         train_info = train_info.dropna(axis="index")
         val_info = val_info.dropna(axis="index")
         print(f"Normalizing fold {k}...")
-        # Normalize the info and datacube using constants computed on the training part of the fold
+        # Normalize the info and datacube using constants computed on the
+        # training part of the fold
         numeric_df = train_info.select_dtypes(include=[np.number]).copy()
+        numeric_df = numeric_df[normalized_cols]
         # Info
         info_mean, info_std = numeric_df.mean(), numeric_df.std()
-        train_info[numeric_cols] = (train_info[numeric_cols] - info_mean) / info_std
-        val_info[numeric_cols] = (val_info[numeric_cols] - info_mean) / info_std
+        train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
+        val_info[normalized_cols] = (val_info[normalized_cols] - info_mean) / info_std
         # Datacube
         train_datacube_mean = train_datacube.mean(
             dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
