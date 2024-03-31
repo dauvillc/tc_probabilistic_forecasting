@@ -181,6 +181,7 @@ if __name__ == "__main__":
     data_info = data_info.reset_index(drop=True)
     # We can now interpolate the partially-NaN images
     datacube = datacube.ffill("h_pixel_offset")
+    datacube = datacube.ffill("v_pixel_offset")
     # NaN values at the border won't be interpolated, we'll fill them with zeros.
     datacube = datacube.fillna(0)
 
