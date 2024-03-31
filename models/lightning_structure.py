@@ -9,7 +9,7 @@ from models.spatial_encoder import SpatialEncoder
 from models.temporal_encoder import TemporalEncoder
 from models.linear import PredictionHead, MultivariatePredictionHead
 from loss_functions.weighted_loss import WeightedLoss
-from utils.predictions import ResidualPrediction
+from utils.tasks_values import TasksValues
 
 
 class StormPredictionModel(pl.LightningModule):
@@ -132,8 +132,9 @@ class StormPredictionModel(pl.LightningModule):
         # Compute the indivual losses for each task
         losses = {}
         for task, task_params in self.tabular_tasks.items():
-            # Loss for the location prediction (predict Y_0)
-            location_loss = predictions.loc_distrib.loss_function(
+            # Loss for the location prediction (predict Y_0). Uses the DeterministicDistribution
+            # object stored in the TasksValues, whose loss function is the MSE.
+            location_loss = predictions.det_distrib.loss_function(
                 predictions.locations[task], target_locations[task], reduce_mean=reduce_mean
             )
             # Loss for the residual prediction (predict Y_t - Y_0)
@@ -148,8 +149,8 @@ class StormPredictionModel(pl.LightningModule):
             if self.use_weighted_loss:
                 # Retrieve the actual intensities by:
                 # 1. Denormalizing the residuals and locations
-                intensities = ResidualPrediction()
-                intensities.add("vmax", target_locations['vmax'],
+                intensities = TasksValues()
+                intensities.add_residual("vmax", target_locations['vmax'],
                                 target_residuals['vmax'])
                 intensities = intensities.denormalize(self.dataset)
                 # 2. Adding the residuals to the locations to get the complete targets
@@ -252,7 +253,7 @@ class StormPredictionModel(pl.LightningModule):
 
         Returns
         -------
-        ResidualPrediction object
+        TasksValues object
             Object which contains the predictions (location, residual distribution, and complete
             distribution) for each task.
         """
@@ -267,15 +268,15 @@ class StormPredictionModel(pl.LightningModule):
         # Flatten the latent space
         latent_space = latent_space.view(latent_space.size(0), -1)
         # Apply the prediction heads
-        predictions = ResidualPrediction()
+        predictions = TasksValues()
         for task, task_params in self.tabular_tasks.items():
             # Predict the location of the distribution
             location = self.location_head[task](latent_space, past_variables)
             # Predict the residual distribution
             residuals = self.residual_heads[task](latent_space, past_variables)
-            # Store the predictions in the ResidualPrediction object, which also
+            # Store the predictions in the TasksValues object, which also
             # calls the activation function of the distribution object
-            predictions.add(task, location, residuals, task_params["distrib_obj"])
+            predictions.add_residual(task, location, residuals, task_params["distrib_obj"])
         return predictions
 
     def configure_optimizers(self):

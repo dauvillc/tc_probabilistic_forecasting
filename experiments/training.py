@@ -66,6 +66,7 @@ def create_tasks(cfg):
         tasks[task] = {
             "output_variables": params["output_variables"],
             "distribution": params["distribution"],
+            "predict_residuals": params["predict_residuals"],
         }
         # Create the distribution object, which implements the loss function,
         # the metrics, optionally the activation function
