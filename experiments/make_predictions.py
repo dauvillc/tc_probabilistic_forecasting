@@ -12,8 +12,9 @@ import wandb
 from pathlib import Path
 from models.lightning_structure import StormPredictionModel
 from data_processing.assemble_experiment_dataset import load_dataset
-from utils.predictions import ResidualPrediction
+from utils.tasks_values import TasksValues
 from utils.wandb import retrieve_wandb_runs
+from distributions.categorical import CategoricalDistribution
 
 
 if __name__ == "__main__":
@@ -90,7 +91,7 @@ if __name__ == "__main__":
         model_predictions = trainer.predict(model, val_loader)
         # Right now, the predictions are stored as a list of batches. Each batch
         # is a ResidualPrediction object containing the predictions for each task.
-        model_predictions = ResidualPrediction.cat(model_predictions)
+        model_predictions = TasksValues.cat(model_predictions)
         # Save the predictions
         model_predictions.save(save_dir)
 
@@ -99,10 +100,23 @@ if __name__ == "__main__":
         print("Saving targets...")
         targets = []
         for _, _, true_locations, true_residuals in val_loader:
+            batch_targets = TasksValues()
             for task in run_tasks:
-                targets.append(ResidualPrediction())
-                targets[-1].add(task, true_locations[task], true_residuals[task])
-        targets = ResidualPrediction.cat(targets)
+                if task in true_residuals:
+                    # Task that has a residual
+                    batch_targets.add_residual(task, true_locations[task], true_residuals[task])
+                else:
+                    # Task that has a direct prediction
+                    task_cfg = cfg["tasks"][task]
+                    if task_cfg["distribution"] == "categorical":
+                        # If the task is a classification task, the distribution to use
+                        # is a CategoricalDistribution
+                        num_classes = task_cfg["num_classes"]
+                        batch_targets.add(task, true_locations[task], CategoricalDistribution(num_classes))
+                    else:
+                        batch_targets.add(task, true_locations[task])
+            targets.append(batch_targets)
+        targets = TasksValues.cat(targets)
         # The dataset yields normalized targets, so we need to denormalize them to compute the metrics
         targets = targets.denormalize(val_dataset)
         targets.save(targets_dir)

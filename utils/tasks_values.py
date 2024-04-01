@@ -89,8 +89,6 @@ class TasksValues:
         self.locations[task_name] = locations
         # Store the distribution object
         self.distribs[task_name] = distrib
-        # Apply the activation function to the residuals
-        self.residuals[task_name] = distrib.activation(residual_params)
         # Compute the distribution of Y_t based on Y_0 and the residuals
         self.final[task_name] = distrib.translate(residual_params, locations)
 
@@ -164,9 +162,10 @@ class TasksValues:
         os.makedirs(locations_path, exist_ok=True)
         os.makedirs(residuals_path, exist_ok=True)
         os.makedirs(final_path, exist_ok=True)
-        for task_name in self.locations.keys():
-            torch.save(self.locations[task_name], locations_path / f"{task_name}.pt")
-            torch.save(self.residuals[task_name], residuals_path / f"{task_name}.pt")
+        for task_name in self.keys():
+            if task_name in self.locations:
+                torch.save(self.locations[task_name], locations_path / f"{task_name}.pt")
+                torch.save(self.residuals[task_name], residuals_path / f"{task_name}.pt")
             torch.save(self.final[task_name], final_path / f"{task_name}.pt")
 
     @staticmethod
@@ -186,8 +185,13 @@ class TasksValues:
         """
         result = TasksValues()
         for task_name in tasks_values_objects[0].keys():
-            locations = torch.cat([obj.locations[task_name] for obj in tasks_values_objects], dim=0)
-            residuals = torch.cat([obj.residuals[task_name] for obj in tasks_values_objects], dim=0)
-            distrib = tasks_values_objects[0].distribs[task_name]
-            result.add_residual(task_name, locations, residuals, distrib)
+            # First, tasks that have only final values
+            if task_name not in tasks_values_objects[0].locations:
+                final_values = torch.cat([obj.final[task_name] for obj in tasks_values_objects], dim=0)
+                result.add(task_name, final_values, tasks_values_objects[0].distribs[task_name])
+            else:
+                locations = torch.cat([obj.locations[task_name] for obj in tasks_values_objects], dim=0)
+                residuals = torch.cat([obj.residuals[task_name] for obj in tasks_values_objects], dim=0)
+                distrib = tasks_values_objects[0].distribs[task_name]
+                result.add_residual(task_name, locations, residuals, distrib)
         return result

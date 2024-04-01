@@ -326,17 +326,21 @@ class StormPredictionModel(pl.LightningModule):
         # Apply the prediction heads
         predictions = TasksValues()
         for task, task_params in self.tabular_tasks.items():
+            distrib = task_params["distrib_obj"]
             if task_params["predict_residuals"]:
                 # Predict the location of the distribution
                 location = self.prediction_heads[task](latent_space, past_variables)
                 # Predict the residual distribution
                 residuals = self.residual_heads[task](latent_space, past_variables)
+                # Apply the activation function of the distribution object
+                residuals = distrib.activation(residuals)
                 # Store the predictions in the TasksValues object, which also
                 # calls the activation function of the distribution object
-                predictions.add_residual(task, location, residuals, task_params["distrib_obj"])
+                predictions.add_residual(task, location, residuals, distrib)
             else:
                 # Predict the whole distribution
                 predicted_params = self.prediction_heads[task](latent_space, past_variables)
+                predicted_params = distrib.activation(predicted_params)
                 predictions.add(task, predicted_params, task_params["distrib_obj"])
         return predictions
 
