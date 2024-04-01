@@ -1,6 +1,6 @@
 experiment:
-  name: test_cross_val
-  group: lambda_005
+  name: det_0_6-24_l05
+  group: tests
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -24,12 +24,33 @@ tasks:
   # - "normal"
   # - "qc" (quantiles composite)
   # - "multivariate_normal"
+  # predict_residuals: true / false
+  #   Whether to predict Y_0 and the residuals (Y_t - Y_0)
+  #   (if true), or to just directly predict the target Y_t.
+  # weight: float
+  #   Weight of the task in the final loss.
+  #   The weights are normalized internally, and so don't need to sum to 1.
   vmax:
     output_variables: ['INTENSITY']
     distribution: deterministic
+    predict_residuals: false
+    weight: 1
+  sshs:
+    output_variables: ['SSHS']
+    distribution: categorical
+    num_classes: 7
+    predict_residuals: false
+    weight: 0
+  ri:
+    output_variables: ['RI']
+    distribution: categorical
+    num_classes: 2
+    predict_residuals: false
+    weight: 1
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
+  # predict_residuals: false
   # r34_avg:
   # output_variables: ['R35_4qAVG']
   # distribution: deterministic
@@ -40,7 +61,7 @@ training_settings:
   epochs: 100
   batch_size: 128
   # Trainer precision, usually "bf16-mixed" or "32-true"
-  precision: 32-true
+  precision: 16-mixed
   # Number of workers for the data loading
   num_workers: 0
   # Weight decay
@@ -73,7 +94,7 @@ model_hyperparameters:
     n_blocks: 5
     base_channels: 4
   temporal_encoder:
-    reduction_factor: 1
+    reduction_factor: 16
     n_blocks: 0
   prediction_head:
-    reduction_factor: 128
+    reduction_factor: 16
