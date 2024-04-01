@@ -193,7 +193,8 @@ if __name__ == "__main__":
 
     # === ADDITIONAL TARGETS ===
     # Add the SSHS category as a target
-    data_info["SSHS"] = sshs_category_array(data_info["INTENSITY"])
+    # Add 1 so that the range is [0, 6] instead of [-1, 5]
+    data_info["SSHS"] = sshs_category_array(data_info["INTENSITY"]) + 1
 
     # === SHIFTED FEATURES CONSTRUCTION ===
     # For all variables that will either be used as context or target, we'll add columns
@@ -242,8 +243,12 @@ if __name__ == "__main__":
     # Select a set of columns which won't be normalized (e.g. categorical columns)
     # Non-numeric columns will not be normalized
     # Only indicate the original name, e.g. "SSHS", not "SSHS_1", "SSHS_2", etc.
-    non_normalized_cols = ["SSHS"]
+    non_normalized_cols = ["SSHS", "RI"]
+    # Retrive the columns 'XXXX_t' from 'XXXX'
+    non_normalized_cols = [col for col in train_info.columns if col.split('_')[0] in non_normalized_cols]
+    # Retrieve a copy of the numeric columns
     numeric_df = train_info.select_dtypes(include=[np.number]).copy()
+    # Deduce the columns to normalize
     normalized_cols = [col for col in numeric_df.columns if col not in non_normalized_cols]
     numeric_df = numeric_df[normalized_cols]
     # First, normalize the whole training set and test set using the training set's mean and std

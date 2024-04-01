@@ -10,6 +10,7 @@ from distributions.multivariate_normal import MultivariateNormal
 from distributions.deterministic import DeterministicDistribution
 from distributions.normal import NormalDistribution
 from distributions.quantile_composite import QuantileCompositeDistribution
+from distributions.categorical import CategoricalDistribution
 from data_processing.assemble_experiment_dataset import load_dataset
 from models.lightning_structure import StormPredictionModel
 from pytorch_lightning.loggers import WandbLogger
@@ -21,17 +22,16 @@ import yaml
 import pytorch_lightning as pl
 
 
-def create_output_distrib(distrib_name, tasks, cfg):
+def create_output_distrib(task_params, cfg):
     """
     Creates the output distribution object, which implements the loss function,
     metrics, CDF and inverse CDF.
 
     Parameters
     ----------
-    distrib_name : str
-        The name of the distribution to use.
-    tasks: dict
-        Pointer to the tasks dictionary, which contains the normalization constants.
+    task_params : dict
+        The parameters of the task, which include the distribution name
+        and parameters.
     cfg: dict
         The configuration dictionary.
 
@@ -39,6 +39,7 @@ def create_output_distrib(distrib_name, tasks, cfg):
     -------
     distribution : the distribution object.
     """
+    distrib_name = task_params["distribution"]
     if distrib_name in ["quantile_composite", "qc"]:
         distribution = QuantileCompositeDistribution()
     elif distrib_name == "normal":
@@ -49,6 +50,8 @@ def create_output_distrib(distrib_name, tasks, cfg):
         distribution = DeterministicDistribution()
     elif distrib_name == "multivariate_normal":
         distribution = MultivariateNormal(len(cfg["experiment"]["target_steps"]))
+    elif distrib_name == "categorical":
+        distribution = CategoricalDistribution(task_params["num_classes"])
     else:
         raise ValueError(f"Unknown output distribution {distrib_name}.")
     return distribution
@@ -67,10 +70,11 @@ def create_tasks(cfg):
             "output_variables": params["output_variables"],
             "distribution": params["distribution"],
             "predict_residuals": params["predict_residuals"],
+            "weight": params["weight"],
         }
         # Create the distribution object, which implements the loss function,
         # the metrics, optionally the activation function
-        distrib = create_output_distrib(params["distribution"], tasks, cfg)
+        distrib = create_output_distrib(params, cfg)
         tasks[task]["distrib_obj"] = distrib
         # Retrieve the output size, either:
         #  - the number of output variables if more than one (and then the distribution must be deterministic)

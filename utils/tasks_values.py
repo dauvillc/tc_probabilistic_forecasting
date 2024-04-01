@@ -109,8 +109,17 @@ class TasksValues:
             A new object with the values denormalized.
         """
         denorm_values = TasksValues()
+        # First, tasks that have only final values
+        for task_name in self.final.keys():
+            if task_name in self.locations:
+                continue
+            # The way the denormalization is done depends on the distribution
+            new_values = self.distribs[task_name].denormalize(
+                self.final[task_name], task_name, dataset, is_residuals=False
+            )
+            denorm_values.add(task_name, new_values, self.distribs[task_name])
+        # Then, tasks that have locations and residuals
         for task_name in self.locations.keys():
-            # The denormalization is specific to each distribution
             new_loc = self.det_distrib.denormalize(self.locations[task_name], task_name, dataset)
             new_res = self.distribs[task_name].denormalize(
                 self.residuals[task_name], task_name, dataset, is_residuals=True
@@ -137,7 +146,7 @@ class TasksValues:
         return self.final[task_name]
 
     def keys(self):
-        return self.locations.keys()
+        return self.final.keys()
 
     def save(self, save_dir):
         """

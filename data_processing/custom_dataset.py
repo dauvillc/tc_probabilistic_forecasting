@@ -35,6 +35,9 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         are the parameters of the task, including at least:
             - 'output_variables': list of str
                 The variables to predict.
+            - 'predict_residuals': bool
+                If True, the batches will yield Y_0 and the residuals Y_T - Y_0 instead of just
+                Y_T.
     datacubes: Mapping of str to torch.Tensor
         The input datacubes. The keys are the names of the datacubes and the values are
         the datacubes themselves. Each datacube must be of shape (N, C, H, W), where N
@@ -143,7 +146,11 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         """
         # Retrieve the output variables of the task
         if not residuals:
-            variables = self.get_task_output_variables(task, time_steps=[0])
+            if self.output_tabular_tasks[task]["predict_residuals"]:
+                time_steps = [0]
+            else:
+                time_steps = self.target_steps
+            variables = self.get_task_output_variables(task, time_steps=time_steps)
         else:   
             variables = self.get_task_output_variables(task, residuals=True)
         # Retrieve the corresponding normalization constants.
@@ -182,15 +189,21 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Retrieve the output time series.
         output_time_series = {}
         for task in self.output_tabular_tasks:
-            # We only only want to predict the location of the target at t=0. For the
-            # other time steps, we predict the residuals between t and 0.
-            output_variables = self.get_task_output_variables(task, time_steps=[0])
+            # If the task splits the targets into Y_0 and (Y_T - Y_0), only yield Y_0 here.
+            if self.output_tabular_tasks[task]["predict_residuals"]:
+                time_steps = [0]
+            else:
+                # Else, yield all the target steps.
+                time_steps = self.target_steps
+            output_variables = self.get_task_output_variables(task, time_steps=time_steps)
             output_time_series[task] = torch.tensor(
                 self.trajectories[output_variables].iloc[idx].values, dtype=torch.float32
             )
-        # Retrieve the residuals.
+        # Retrieve the residuals for the task that require them.
         output_residues = {}
         for task in self.output_tabular_tasks:
+            if not self.output_tabular_tasks[task]["predict_residuals"]:
+                continue
             residuals = self.get_task_output_variables(task, residuals=True)
             output_residues[task] = torch.tensor(
                 self.trajectories[residuals].iloc[idx].values, dtype=torch.float32
