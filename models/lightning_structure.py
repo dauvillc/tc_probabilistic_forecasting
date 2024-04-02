@@ -196,12 +196,18 @@ class StormPredictionModel(pl.LightningModule):
                 )
             # Apply the weighted loss if needed
             if self.use_weighted_loss:
-                # Retrieve the actual intensities by:
-                # 1. Denormalizing the residuals and locations
+                # The weight depends on the intensity of the target
+                # We need to retrieve the denormalized intensities of each sample
+                # in the batch.
+                # If the target is split into location and residuals, we need to
+                # compute the complete target intensities first.
                 intensities = TasksValues()
-                intensities.add_residual(
-                    "vmax", target_locations["vmax"], target_residuals["vmax"]
-                )
+                if task_params["predict_residuals"]:
+                    intensities.add_residual(
+                        "vmax", target_locations["vmax"], target_residuals["vmax"]
+                    )
+                else:
+                    intensities.add("vmax", target_locations["vmax"])
                 intensities = intensities.denormalize(self.dataset)
                 # 2. Adding the residuals to the locations to get the complete targets
                 intensities = intensities.final_predictions("vmax")
