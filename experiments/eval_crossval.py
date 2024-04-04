@@ -35,12 +35,20 @@ if __name__ == "__main__":
         type=str,
         help="List of run ids to evaluate. Ignored if groups is provided.",
     )
+    parser.add_argument(
+        "-m",
+        "--metric",
+        type=str,
+        default="CRPS",
+        help="Name of the metric to evaluate. Default is CRPS.",
+    )
     args = parser.parse_args()
     if args.groups is not None:
         args.ids = None
         groups = args.groups
     else:
         groups = None
+    metric = args.metric
 
     # Load the path configuration
     with open("config.yml", "r") as file:
@@ -70,7 +78,7 @@ if __name__ == "__main__":
     results_dir = Path("results") / current_run_name
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # =================== CRPS COMPUTATION =================== #
+    # =================== METRIC COMPUTATION =================== #
     # We'll compute the CRPS for each run, on each fold.
     # We'll store it in a DataFrame with the following columns:
     # run_id, group, fold, time step, category, CRPS
@@ -84,7 +92,7 @@ if __name__ == "__main__":
         predictions = all_predictions[run_id]["vmax"]
         targets = all_targets[run_id]["vmax"]
         # Do not compute the average: obtain the CRPS for each sample and each time step
-        crps = distrib.metrics["CRPS"](predictions, targets, reduce_mean="none")  # (N, T)
+        crps = distrib.metrics[metric](predictions, targets, reduce_mean="none")  # (N, T)
         N, T = crps.shape
         # Compute the SSHS category for each target
         targets_cat = sshs_category(targets.view(-1)).view(N, T)
@@ -92,7 +100,7 @@ if __name__ == "__main__":
         col_run_id += [run_id] * N * T
         col_group += [runs[run_id].group] * N * T
         col_fold += [configs[run_id]["experiment"]["fold"]] * N * T
-        for i, t in enumerate(configs[run_id]['experiment']['target_steps']):
+        for i, t in enumerate(configs[run_id]["experiment"]["target_steps"]):
             col_crps += crps[:, i].tolist()
             col_category += targets_cat[:, i].tolist()
             col_time += [6 * t] * N  # 1 time step = 6 hours
@@ -104,14 +112,14 @@ if __name__ == "__main__":
             "fold": col_fold,
             "time_step": col_time,
             "category": col_category,
-            "crps": col_crps,
+            metric: col_crps,
         }
     )
     # Compute the mean and the std of the CRPS for each group
     # to obtain a DF (group, mean_crps, std_crps)
-    group_results = results.groupby("group").agg({"crps": ["mean", "std"]})
+    group_results = results.groupby("group").agg({metric: ["mean", "std"]})
     group_results.columns = group_results.columns.droplevel()
-    group_results.columns = ["mean_crps", "std_crps"]
+    group_results.columns = [f"mean_{metric}", f"std_{metric}"]
     group_results = group_results.reset_index()
     # Save the results to a CSV file
     results.to_csv(results_dir / "results.csv", index=False)
@@ -120,16 +128,16 @@ if __name__ == "__main__":
     # Plot the CRPS for each time step, grouped by group
     sns.set_theme(style="darkgrid")
     fig, ax = plt.subplots()
-    sns.boxplot(data=results, x='time_step', y='crps', hue='group', ax=ax)
-    ax.set_title('CRPS over lead time')
-    ax.set_xlabel('Lead time (hours)')
-    ax.set_ylabel('CRPS')
-    plt.savefig(results_dir / 'crps_lead_time.png')
+    sns.boxplot(data=results, x="time_step", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{metric} over lead time")
+    ax.set_xlabel("Lead time (hours)")
+    ax.set_ylabel(metric)
+    plt.savefig(results_dir / f"{metric}_lead_time.png")
 
     # Plot the CRPS for each SSHS category, grouped by group
     fig, ax = plt.subplots()
-    sns.boxplot(data=results, x='category', y='crps', hue='group', ax=ax)
-    ax.set_title('CRPS over SSHS category')
-    ax.set_xlabel('SSHS category')
-    ax.set_ylabel('CRPS')
-    plt.savefig(results_dir / 'crps_category.png')
+    sns.boxplot(data=results, x="category", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{metric} over SSHS category")
+    ax.set_xlabel("SSHS category")
+    ax.set_ylabel(metric)
+    plt.savefig(results_dir / f"{metric}_category.png")
