@@ -62,6 +62,7 @@ class DeterministicDistribution(PredictionDistribution):
         # Define the metrics
         self.metrics = {
                 'RMSE': RMSE,
+                'MSE': mse,
                 'MAE': mae,
                 'CRPS': mae  # The CRPS is the MAE for a deterministic distribution
                 }
