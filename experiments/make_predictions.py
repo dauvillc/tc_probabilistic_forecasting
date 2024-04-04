@@ -24,10 +24,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-g",
-        "--group",
+        "--groups",
+        nargs="+",
         type=str,
         default=None,
-        help="Group of W&B runs for which to perform predictions.\
+        help="Group(s) of W&B runs for which to perform predictions.\
                 Must not be used with --run_id.",
     )
     parser.add_argument(
@@ -35,14 +36,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     run_ids = [args.run_id] if args.run_id is not None else None
-    group = args.group
-    if run_ids is None and group is None:
+    groups = args.groups
+    if run_ids is None and groups is None:
         raise ValueError("Either --run_id or --group must be provided.")
-    if run_ids is not None and group is not None:
+    if run_ids is not None and groups is not None:
         raise ValueError("--run_id and --group cannot be used together.")
 
     # Retrieve the runs config from W&B
-    runs, cfgs, all_tasks = retrieve_wandb_runs(run_ids, group)
+    runs, cfgs, all_tasks = retrieve_wandb_runs(run_ids, groups)
     # Update the list of run_ids in case "group" was used
     run_ids = list(runs.keys())
     print(f"Found {len(run_ids)} runs.")
