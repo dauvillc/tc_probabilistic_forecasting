@@ -24,14 +24,23 @@ if __name__ == "__main__":
     # Load config file
     with open("config.yml", "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
-    _TCIR_PATH_ = cfg["paths"]["tcir"]
+    # Load the paths to the two parts of the dataset
+    _TCIR_PATH_1_ = cfg["paths"]["tcir_atln"]  # Atlantic part
+    _TCIR_PATH_2_ = cfg["paths"]["tcir_sh"] # Southern Hemisphere part
 
     print("Loading the raw TCIR dataset...")
     # Load the tabular information
-    data_info = pd.read_hdf(_TCIR_PATH_, key="info", mode="r")
+    data_info_1 = pd.read_hdf(_TCIR_PATH_1_, key="info", mode="r")
+    data_info_2 = pd.read_hdf(_TCIR_PATH_2_, key="info", mode="r")
 
-    # Load the datacube
-    datacube = xr.open_dataset(_TCIR_PATH_)["matrix"]
+    # Load the datacubes
+    datacube_1 = xr.open_dataset(_TCIR_PATH_1_)["matrix"]
+    datacube_2 = xr.open_dataset(_TCIR_PATH_2_)["matrix"]
+
+    # Concatenate the two parts
+    data_info = pd.concat([data_info_1, data_info_2], ignore_index=True)
+    datacube = xr.concat([datacube_1, datacube_2], dim="phony_dim_4")
+    data_info = data_info.reset_index(drop=True)
 
     # === TABULAR DATA PREPROCESSING ===
     # Rename the columns to match IBTrACS
