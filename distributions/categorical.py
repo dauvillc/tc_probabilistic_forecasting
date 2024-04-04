@@ -62,8 +62,10 @@ class CategoricalDistribution(PredictionDistribution):
         target = target.view(-1)
         # Convert the target to integer type
         target = target.long()
-        # Compute the cross-entropy
-        loss = torch.nn.functional.cross_entropy(predicted_params, target, reduction="none")
+        # Convert the probabilities to log-probas
+        log_probs = predicted_params.log()
+        # Apply the NLL loss to obtain the cross-entropy
+        loss = torch.nn.functional.nll_loss(log_probs, target, reduction="none")
         # Reshape the loss to the original shape
         loss = loss.view(N, T)
         return average_score(loss, reduce_mean)
