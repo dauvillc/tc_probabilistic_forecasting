@@ -26,21 +26,22 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(cfg_file)
     # Load the paths to the two parts of the dataset
     _TCIR_PATH_1_ = cfg["paths"]["tcir_atln"]  # Atlantic part
-    _TCIR_PATH_2_ = cfg["paths"]["tcir_sh"] # Southern Hemisphere part
+    _TCIR_PATH_2_ = cfg["paths"]["tcir_sh"]  # Southern Hemisphere part
 
     print("Loading the raw TCIR dataset...")
     # Load the tabular information
-    data_info_1 = pd.read_hdf(_TCIR_PATH_1_, key="info", mode="r")
-    data_info_2 = pd.read_hdf(_TCIR_PATH_2_, key="info", mode="r")
+    data_info = pd.concat(
+        [
+            pd.read_hdf(_TCIR_PATH_1_, key="info", mode="r"),
+            pd.read_hdf(_TCIR_PATH_2_, key="info", mode="r"),
+        ]
+    )
 
-    # Load the datacubes
-    datacube_1 = xr.open_dataset(_TCIR_PATH_1_)["matrix"]
-    datacube_2 = xr.open_dataset(_TCIR_PATH_2_)["matrix"]
-
-    # Concatenate the two parts
-    data_info = pd.concat([data_info_1, data_info_2], ignore_index=True)
-    datacube = xr.concat([datacube_1, datacube_2], dim="phony_dim_4")
-    data_info = data_info.reset_index(drop=True)
+    # Load the datacubes and concatenate them at once
+    datacube = xr.combine_nested(
+        [xr.open_dataset(_TCIR_PATH_1_)["matrix"], xr.open_dataset(_TCIR_PATH_2_)["matrix"]],
+        concat_dim="phony_dim_4",
+    )
 
     # === TABULAR DATA PREPROCESSING ===
     # Rename the columns to match IBTrACS
@@ -119,7 +120,7 @@ if __name__ == "__main__":
 
     # Finally, we'll add a coordinate for the variable dimension
     datacube = datacube.assign_coords(variable=("variable", ["IR", "PMW"]))
-    
+
     # Plot the histogram of the pixel values for each channel
     # Set the y-axis to log scale
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
@@ -127,7 +128,7 @@ if __name__ == "__main__":
         datacube.sel(variable=var).plot.hist(ax=axes[k], bins=100)
         axes[k].set_title(f"{var} channel")
         axes[k].set_yscale("log")
-    plt.savefig('figures/pixel_histograms.png')
+    plt.savefig("figures/pixel_histograms.png")
 
     # === OUTLIERS AND MISSING VALUES ==== (SEE NOTEBOOK FOR EXPLAINATIONS)
     print("Processing outliers and missing values...")
@@ -254,7 +255,9 @@ if __name__ == "__main__":
     # Only indicate the original name, e.g. "SSHS", not "SSHS_1", "SSHS_2", etc.
     non_normalized_cols = ["SSHS", "RI"]
     # Retrive the columns 'XXXX_t' from 'XXXX'
-    non_normalized_cols = [col for col in train_info.columns if col.split('_')[0] in non_normalized_cols]
+    non_normalized_cols = [
+        col for col in train_info.columns if col.split("_")[0] in non_normalized_cols
+    ]
     # Retrieve a copy of the numeric columns
     numeric_df = train_info.select_dtypes(include=[np.number]).copy()
     # Deduce the columns to normalize
