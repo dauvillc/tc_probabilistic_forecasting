@@ -11,6 +11,7 @@ import pandas as pd
 import yaml
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 from pathlib import Path
 from utils.utils import sshs_category
 from utils.wandb import retrieve_wandb_runs
@@ -42,6 +43,13 @@ if __name__ == "__main__":
         default="CRPS",
         help="Name of the metric to evaluate. Default is CRPS.",
     )
+    parser.add_argument(
+            "-t",
+            "--task",
+            type=str,
+            default="vmax",
+            help="Name of the task to evaluate. Default is vmax.",
+    )
     args = parser.parse_args()
     if args.groups is not None:
         args.ids = None
@@ -49,6 +57,7 @@ if __name__ == "__main__":
     else:
         groups = None
     metric = args.metric
+    eval_task = args.task
 
     # Load the path configuration
     with open("config.yml", "r") as file:
@@ -79,29 +88,37 @@ if __name__ == "__main__":
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # =================== METRIC COMPUTATION =================== #
-    # We'll compute the CRPS for each run, on each fold.
+    # First: some metrics require an additional aggregation step
+    # E.g. the RMSE requires to take the square root of the MSE
+    # For these cases, we'll compute the non-aggregated metric and then
+    # apply the aggregation step.
+    original_metric = metric
+    if metric == "RMSE":
+        metric = "MSE"
+    # We'll compute the metric for each run, on each fold.
     # We'll store it in a DataFrame with the following columns:
-    # run_id, group, fold, time step, category, CRPS
+    # run_id, group, fold, time step, category, metric
     # Lists to store the columns of the DataFrame
     col_run_id, col_group, col_fold, col_crps = [], [], [], []
     col_time, col_category = [], []
     for run_id in run_ids:
-        # Compute the CRPS for the run using the 'CRPS' metric function
+        # Compute the metric for the run using the metric function
         # of the run's PredictionDistribution object
-        distrib = all_tasks[run_id]["vmax"]["distrib_obj"]
-        predictions = all_predictions[run_id]["vmax"]
-        targets = all_targets[run_id]["vmax"]
-        # Do not compute the average: obtain the CRPS for each sample and each time step
-        crps = distrib.metrics[metric](predictions, targets, reduce_mean="none")  # (N, T)
-        N, T = crps.shape
+        distrib = all_tasks[run_id][eval_task]["distrib_obj"]
+        predictions = all_predictions[run_id][eval_task]
+        targets = all_targets[run_id][eval_task]
+        # Do not compute the average: obtain the value for each sample and each time step
+        values = distrib.metrics[metric](predictions, targets, reduce_mean="none")  # (N, T)
+        N, T = values.shape
         # Compute the SSHS category for each target
-        targets_cat = sshs_category(targets.view(-1)).view(N, T)
+        vmax_targets = all_targets[run_id]["vmax"]
+        targets_cat = sshs_category(vmax_targets.view(-1)).view(N, T)
         # Store the results in the future columns of the DataFrame
         col_run_id += [run_id] * N * T
         col_group += [runs[run_id].group] * N * T
         col_fold += [configs[run_id]["experiment"]["fold"]] * N * T
         for i, t in enumerate(configs[run_id]["experiment"]["target_steps"]):
-            col_crps += crps[:, i].tolist()
+            col_crps += values[:, i].tolist()
             col_category += targets_cat[:, i].tolist()
             col_time += [6 * t] * N  # 1 time step = 6 hours
     # Assemble the DataFrame
@@ -115,29 +132,66 @@ if __name__ == "__main__":
             metric: col_crps,
         }
     )
-    # Compute the mean and the std of the CRPS for each group
-    # to obtain a DF (group, mean_crps, std_crps)
+    # Compute the mean and the std of the metric for each group
+    # to obtain a DF (group, mean_metric, std_metric)
     group_results = results.groupby("group").agg({metric: ["mean", "std"]})
     group_results.columns = group_results.columns.droplevel()
     group_results.columns = [f"mean_{metric}", f"std_{metric}"]
     group_results = group_results.reset_index()
     # Save the results to a CSV file
     results.to_csv(results_dir / "results.csv", index=False)
+    
+    # ================== OPTIONAL AGGREGATION =================== #
+    # If the metric requires an aggregation step, apply it now
+    # We'll create two now DFs: one with the results aggregated by time step
+    # and another one with the results aggregated by SSHS category
+    if original_metric == "RMSE":
+        results_per_time = results.rename(columns={"MSE": "RMSE"})
+        results_per_time = results_per_time[['group', 'time_step', 'RMSE']]
+        results_per_time = results_per_time.groupby(["group", "time_step"])['RMSE'].mean().reset_index()
+        results_per_time['RMSE'] = np.sqrt(results_per_time['RMSE'])
+        results_per_cat = results.rename(columns={"MSE": "RMSE"})
+        results_per_cat = results_per_cat[['group', 'category', 'RMSE']]
+        results_per_cat = results_per_cat.groupby(['group', "category"])['RMSE'].mean().reset_index()
+        results_per_cat['RMSE'] = np.sqrt(results_per_cat['RMSE'])
+        metric = "RMSE"
+    else:
+        results_per_time = results
+        results_per_cat = results
 
     # ================== PLOTTING =================== #
-    # Plot the CRPS for each time step, grouped by group
+    # Plot the metric for each time step, grouped by group
     sns.set_theme(style="darkgrid")
     fig, ax = plt.subplots()
-    sns.boxplot(data=results, x="time_step", y=metric, hue="group", ax=ax)
-    ax.set_title(f"{metric} over lead time")
+    sns.boxplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{eval_task} - {metric} over lead time")
     ax.set_xlabel("Lead time (hours)")
     ax.set_ylabel(metric)
-    plt.savefig(results_dir / f"{metric}_lead_time.png")
-
-    # Plot the CRPS for each SSHS category, grouped by group
+    # Set the x-axis to be in hours
+    ax.set_xticks(range(len(results_per_time["time_step"].unique())))
+    ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time.png")
+    # Do the same but with a line plot
     fig, ax = plt.subplots()
-    sns.boxplot(data=results, x="category", y=metric, hue="group", ax=ax)
-    ax.set_title(f"{metric} over SSHS category")
+    sns.lineplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{eval_task} - {metric} over lead time")
+    ax.set_xlabel("Lead time (hours)")
+    ax.set_ylabel(f'{metric} - 95% CI')
+    ax.set_xticks(results_per_time["time_step"].unique())
+    ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time_line.png")
+
+    # Plot the metric for each SSHS category, grouped by group
+    fig, ax = plt.subplots()
+    sns.boxplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{eval_task} - {metric} over SSHS category")
     ax.set_xlabel("SSHS category")
     ax.set_ylabel(metric)
-    plt.savefig(results_dir / f"{metric}_category.png")
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category.png")
+    # Do the same but with a line plot
+    fig, ax = plt.subplots()
+    sns.lineplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax)
+    ax.set_title(f"{eval_task} - {metric} over SSHS category")
+    ax.set_xlabel("SSHS category")
+    ax.set_ylabel(f'{metric} - 95% CI')
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category_line.png")
