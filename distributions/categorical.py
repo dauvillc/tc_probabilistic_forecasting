@@ -22,7 +22,7 @@ class CategoricalDistribution(PredictionDistribution):
         self.num_classes = num_classes
         self.n_parameters = num_classes
         self.is_multivariate = False
-        self.metrics = {}
+        self.metrics = {"Accuracy": self.accuracy}
 
     def activation(self, predicted_params):
         """
