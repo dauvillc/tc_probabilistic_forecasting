@@ -27,8 +27,9 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
             The list of the output variables.
     subset : str
         'train', 'val' or 'test'.
-    fold : int
-        Cross-validation fold index.
+    fold : int or None
+        Cross-validation fold index. If None, returns the full training or test set.
+        Raises an error if fold is not None and subset is 'test'.
 
     Returns
     -------
