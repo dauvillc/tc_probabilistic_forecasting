@@ -22,8 +22,9 @@ def load_tcir(subset, fold_index):
     ----------
     subset : str
         'train', 'val' or 'test'. The subset of the TCIR dataset to load.
-    fold_index : int
-        Which cross-validation fold to load.
+    fold_index : int or None
+        Which cross-validation fold to load. if None, loads the entire training or test set.
+        Raises an error if subset is 'val' and fold_index is None.
 
     Returns
     -------
@@ -35,10 +36,14 @@ def load_tcir(subset, fold_index):
     datacube_mean: xarray DataArray containing the mean of each variable in tcir_datacube.
     datacube_std: xarray DataArray containing the standard deviation of each variable in tcir_datacube.
     """
+    # Check if the subset is 'val' and fold_index is None
+    if subset == "val" and fold_index is None:
+        raise ValueError("fold_index must be specified when loading the validation set.")
     # Retrieve the paths from config.yml
     with open("config.yml") as file:
         config = yaml.safe_load(file)
-    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / f"fold_{fold_index}"
+    fold_dir = f"fold_{fold_index}" if fold_index is not None else ""
+    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / fold_dir
     # Load the datacube
     tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
     # Load the info
