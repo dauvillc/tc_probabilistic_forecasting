@@ -4,7 +4,7 @@ Implements a single 3D CNN for various tasks.
 
 import torch
 import torch.nn as nn
-from models.cbam import CBAM3D
+from models.cbam import CBAM
 
 
 def conv_layer_output_size(input_size, kernel_size, padding=0, stride=1):
@@ -107,7 +107,7 @@ class DownsamplingBlock2D(nn.Module):
         )
         # Base block
         if base_block == "cbam":
-            self.base_block = CBAM3D(out_channels)
+            self.base_block = CBAM(out_channels)
         elif base_block == "conv":
             self.base_block = BasicCNNBlock2D(out_channels, out_channels, kernel_size=kernel_size)
         else:
