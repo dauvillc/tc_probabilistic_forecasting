@@ -5,7 +5,8 @@ Implements a weighted loss function.
 import matplotlib.pyplot as plt
 import torch
 import scipy.stats as ss
-from torch.distributions import Weibull
+import numpy as np
+from torch.distributions import LogNormal
 
 
 class WeightedLoss:
@@ -39,28 +40,29 @@ class WeightedLoss:
         max_intensities, _ = torch.max(intensities, dim=1)
         # Convert the intensities to a numpy array for compatibility with scipy
         max_intensities = max_intensities.numpy()
-        # Shift the intensities so that the minimum is 1.
-        max_intensities -= min(max_intensities) - 1
+        # The intensities are not exactly continuous, so we add a small amount
+        # of noise to make the empirical distribution easier to fit.
+        max_intensities += np.random.normal(0, 5, max_intensities.shape)
+        # Intensities below 12kts are not impactful but are very rare, so they would
+        # get a very high weight. To avoid this, we clip the intensities to 10kts minimum
+        # when computing the weights.
+        max_intensities = np.clip(max_intensities, 12, None)
         # Fit a weibull distribution to the intensities. When the loss is called,
         # the pdf will be used to compute the weights.
-        shape, loc, scale = ss.weibull_min.fit(max_intensities, floc=0)
-        self.scale, self.shape = scale, shape
+        shape, loc, scale = ss.lognorm.fit(max_intensities, floc=0)
+        self.scale, self.shape = np.log(scale), shape
         # Create a torch distribution from the fitted parameters.
-        distribution = Weibull(scale=scale, concentration=shape)
-        # We now need to compute the integral of 1 / pdf over the whole support,
-        # so that we can normalize the weights.
-        # We'll use the trapezoidal rule to approximate the integral, which won't
-        # be a problem as we can use a large number of points since we'll only do
-        # this once.
-        x = torch.linspace(1, max(max_intensities), 1000)
-        y = distribution.log_prob(x).exp()
-        self.weights_integral = torch.trapz(1 / y, dx=x[1] - x[0])
+        distribution = LogNormal(self.scale, shape)
+        # We'll now compute the sum of the weights, so that we can normalize them
+        # to sum to 1.
+        y = distribution.log_prob(torch.tensor(max_intensities)).exp()
+        self.weights_integral = (1 / y).sum().item()
 
         # Test the goodness of fit if requested
         if test_goodness_of_fit:
             # Perform a Kolmogorov-Smirnov test to check if the fitted
             # distribution is a good fit to the intensities
-            _, p_value = ss.kstest(max_intensities, "weibull_min", args=(shape, 0, scale))
+            _, p_value = ss.kstest(max_intensities, "lognorm", args=(shape, 0, scale))
             print(f"Kolmogorov-Smirnov test p-value: {p_value}")
 
         # Plot the weights if requested
@@ -76,11 +78,12 @@ class WeightedLoss:
             ax1.hist(
                 max_intensities,
                 density=True,
+                bins=100,
                 alpha=0.5,
                 label="Empirical max intensities distribution",
             )
             # Plot the fitted distribution
-            x = torch.linspace(1, max(max_intensities), 100)
+            x = torch.linspace(min(max_intensities), max(max_intensities), 100)
             y = distribution.log_prob(x).exp().numpy()
             ax1.plot(x, y, label="Fitted distribution")
             # Plot the weights
@@ -116,12 +119,12 @@ class WeightedLoss:
         device = loss_values.device
         # Now take the max intensity over all time steps
         intensities, _ = torch.max(intensities, dim=1)
-        # Shift the intensities so that the minimum is 1.
-        intensities -= torch.min(intensities) - 1
+        # Clip the intensities (see __init__ for explanation)
+        intensities = torch.clamp(intensities, 12, None)
         # Create a torch distribution from the fitted parameters.
-        distribution = Weibull(
-            scale=torch.tensor(self.scale, device=device),
-            concentration=torch.tensor(self.shape, device=device),
+        distribution = LogNormal(
+            torch.tensor(self.scale, device=device),
+            torch.tensor(self.shape, device=device),
         )
         probas = distribution.log_prob(intensities).exp()
         # Compute the weights using the fitted distribution
