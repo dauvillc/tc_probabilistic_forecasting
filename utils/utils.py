@@ -72,6 +72,33 @@ def hours_to_sincos(times):
     return times
 
 
+def months_to_sincos(times):
+    """
+    Converts an array-like of times to an array-like of sin/cos encoding.
+    Ignores the date and only uses the months.
+
+    Parameters
+    ----------
+    times : array-like of datetime.datetime
+        The times to convert. Only the months are considered.
+
+    Returns
+    -------
+    An array of shape (len(times), 2), containing the sin/cos encoding of the times.
+    """
+    # Convert the times to a pandas Series
+    times = pd.Series(times, dtype='datetime64[ns]')
+    # Ignore the date and only keep the months
+    times = times.dt.month
+    # Convert back to a numpy array
+    times = times.values
+    # Convert the months to radians
+    times = (times / 12) * 2 * np.pi
+    # Compute the sin/cos encoding
+    times = np.stack([np.sin(times), np.cos(times)], axis=1)
+    return times
+
+
 def matplotlib_markers(num):
     """
     Returns a list of matplotlib markers, which can be used to plot num lines

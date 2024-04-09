@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from utils.utils import hours_to_sincos, sshs_category_array
+from utils.utils import hours_to_sincos, months_to_sincos, sshs_category_array
 from utils.preprocessing import grouped_shifts_and_deltas
 from utils.train_test_split import stormwise_train_test_split, kfold_split
 
@@ -200,6 +200,10 @@ if __name__ == "__main__":
     embedded_time = hours_to_sincos(data_info["ISO_TIME"])
     data_info["HOUR_SIN"] = embedded_time[:, 0]
     data_info["HOUR_COS"] = embedded_time[:, 1]
+    # Add the month as a feature
+    embedded_month = months_to_sincos(data_info["ISO_TIME"])
+    data_info["MONTH_SIN"] = embedded_month[:, 0]
+    data_info["MONTH_COS"] = embedded_month[:, 1]
 
     # === ADDITIONAL TARGETS ===
     # Add the SSHS category as a target
@@ -215,7 +219,8 @@ if __name__ == "__main__":
     # 1. Load the set of time steps to shift the variables
     shifts = cfg["preprocessing"]["steps"]
     # 2. Fixed set of variables to shift and compute deltas
-    shifted_vars = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP", "SSHS", "HOUR_COS", "HOUR_SIN"]
+    shifted_vars = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP", "SSHS", "HOUR_COS", "HOUR_SIN",
+                    "MONTH_COS", "MONTH_SIN"]
     delta_cols = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP"]
     # 3. Shift the variables and compute the deltas
     data_info = grouped_shifts_and_deltas(data_info, "SID", shifted_vars, delta_cols, shifts)
