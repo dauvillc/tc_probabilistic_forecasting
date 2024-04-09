@@ -243,6 +243,7 @@ def extract_patches(vartype, args):
             os.path.join("figures", "era5_patches", month.strftime("%Y_%m") + f"_{vartype}.png"),
             bbox_inches="tight",
         )
+        plt.close(fig)
 
         print("Processed month in ", time.time() - processing_time, "s")
 
