@@ -46,6 +46,7 @@ def extract_patches(vartype, args):
         # Read the unpreprocessed TCIR path
         tcir_atln = config["paths"]["tcir_atln"]
         tcir_sh = config["paths"]["tcir_sh"]
+        tcir_2017 = config["paths"]["tcir_2017"]
         # Input and output directories
         input_dir = config["paths"]["era5"]
         output_dir = config["paths"]["era5_patches"]
@@ -71,8 +72,9 @@ def extract_patches(vartype, args):
         [
             pd.read_hdf(tcir_atln, key="info", mode="r"),
             pd.read_hdf(tcir_sh, key="info", mode="r"),
+            pd.read_hdf(tcir_2017, key="info", mode="r"),
         ]
-    )
+    ).reset_index(drop=True)
     storms_data = storms_data.rename(
         {"ID": "SID", "lon": "LON", "lat": "LAT", "time": "ISO_TIME"}, axis="columns"
     )
