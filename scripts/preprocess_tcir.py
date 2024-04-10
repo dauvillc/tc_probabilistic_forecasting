@@ -50,8 +50,6 @@ if __name__ == "__main__":
             [xr.open_dataset(_TCIR_PATH_1_)["matrix"], xr.open_dataset(_TCIR_PATH_2_)["matrix"]],
             concat_dim="phony_dim_4",
         )
-        # Chunk the datacube
-        datacube = datacube.chunk({"phony_dim_4": 500})
 
         # === TABULAR DATA PREPROCESSING ===
         # Rename the columns to match IBTrACS
@@ -213,14 +211,12 @@ if __name__ == "__main__":
     else:
         # Load the intermediate data
         print("Loading the intermediate data from ", save_dir)
-        datacube = xr.open_dataarray(save_dir / "datacube_intermediate.nc",
-                                     chunks={"sid_time": 500})
+        datacube = xr.open_dataarray(save_dir / "datacube_intermediate.nc")
         data_info = pd.read_csv(save_dir / "info_intermediate.csv", index_col=0)
 
     # === CONCATENATION WITH ERA5 =======
     # Load the ERA5 patches
-    era5 = xr.open_mfdataset(_ERA5_PATCHES_PATH_ + "/*_surf*.nc", combine="nested", concat_dim="sid_time",
-                             chunks={"sid_time": 500})
+    era5 = xr.open_mfdataset(_ERA5_PATCHES_PATH_ + "/*_surf*.nc", combine="nested", concat_dim="sid_time")
     # Add a 'sid_time' index to ERA5 and to TCIR
     era5 = era5.set_xindex(['sid', 'time'])
     datacube = datacube.set_xindex(['sid', 'time'])
