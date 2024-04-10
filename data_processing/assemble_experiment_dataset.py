@@ -9,7 +9,7 @@ from utils.sampling import inverse_intensity_sampler
 from utils.datacube import datacube_to_tensor
 
 
-def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
+def load_dataset(cfg, input_variables, tabular_tasks, subset):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
@@ -27,9 +27,6 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
             The list of the output variables.
     subset : str
         'train', 'val' or 'test'.
-    fold : int or None
-        Cross-validation fold index. If None, returns the full training or test set.
-        Raises an error if fold is not None and subset is 'test'.
 
     Returns
     -------
@@ -39,7 +36,7 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
     # ====== LOAD DATASET ====== #
     # Load the TCIR dataset
     tcir_info, tcir_datacube, info_means, info_stds, datacube_means, datacube_stds = load_tcir(
-        subset, fold_index=fold, channels=cfg['experiment']['input_channels']
+        subset, channels=cfg['experiment']['input_channels']
     )
     print(f"TCIR {subset} dataset loaded")
     print("Memory usage: {:.2f} GB".format(tcir_datacube.nbytes / 1e9))

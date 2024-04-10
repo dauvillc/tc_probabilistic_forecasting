@@ -12,7 +12,7 @@ from tqdm import tqdm
 from utils.datacube import select_sid_time
 
 
-def load_tcir(subset, fold_index, channels):
+def load_tcir(subset, channels):
     """
     Loads the TCIR dataset: https://www.csie.ntu.edu.tw/~htlin/program/TCIR/
     The dataset must have been preprocessed using scripts/preprocess_tcir.py first.
@@ -22,9 +22,6 @@ def load_tcir(subset, fold_index, channels):
     ----------
     subset : str
         'train', 'val' or 'test'. The subset of the TCIR dataset to load.
-    fold_index : int or None
-        Which cross-validation fold to load. if None, loads the entire training or test set.
-        Raises an error if subset is 'val' and fold_index is None.
     channels: list of str
         Which channels to load.
 
@@ -38,17 +35,13 @@ def load_tcir(subset, fold_index, channels):
     datacube_mean: xarray DataArray containing the mean of each variable in tcir_datacube.
     datacube_std: xarray DataArray containing the standard deviation of each variable in tcir_datacube.
     """
-    # Check if the subset is 'val' and fold_index is None
-    if subset == "val" and fold_index is None:
-        raise ValueError("fold_index must be specified when loading the validation set.")
     # Retrieve the paths from config.yml
     with open("config.yml") as file:
         config = yaml.safe_load(file)
-    fold_dir = f"fold_{fold_index}" if fold_index is not None else ""
-    dir_path = Path(config["paths"]["tcir_preprocessed_dir"]) / fold_dir
+    dir_path = Path(config["paths"]["tcir_preprocessed_dir"])
     # Load the datacube
-    tcir_datacube = xr.open_dataarray(dir_path / subset / "datacube.nc")
-    tcir_datacube = tcir_datacube.sel(variable=channels)
+    tcir_datacube = xr.open_dataset(dir_path / subset / "datacube.nc")
+    tcir_datacube = tcir_datacube[channels]
     # Load the info
     tcir_info = pd.read_csv(dir_path / subset / "info.csv", parse_dates=["ISO_TIME"], index_col=0)
     # Set the index to sid_time
@@ -59,8 +52,8 @@ def load_tcir(subset, fold_index, channels):
     )
     info_std = pd.read_csv(dir_path / "info_std.csv", header=None, index_col=0).squeeze("columns")
     # Load the mean and std of the datacube
-    datacube_mean = xr.open_dataarray(dir_path / "datacube_mean.nc").sel(variable=channels)
-    datacube_std = xr.open_dataarray(dir_path / "datacube_std.nc").sel(variable=channels)
+    datacube_mean = xr.open_dataset(dir_path / "datacube_mean.nc")[channels]
+    datacube_std = xr.open_dataset(dir_path / "datacube_std.nc")[channels]
 
     return tcir_info, tcir_datacube, info_mean, info_std, datacube_mean, datacube_std
 

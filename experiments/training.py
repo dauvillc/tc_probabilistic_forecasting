@@ -103,16 +103,11 @@ if __name__ == "__main__":
         help="Flag to indicate that the script is run as part of a sweep.",
     )
     parser.add_argument(
-        "-f", "--fold", type=int, help="Cross-validation fold to use for training."
-    )
-    parser.add_argument(
         "--full",
         action="store_true",
         help="Uses the full training set and evaluates on the test set.",
     )
     args = parser.parse_args()
-    if args.fold is None and not args.full:
-        raise ValueError("You must provide a fold number or use the --full flag.")
 
     # Load the training configuration file
     with open("training_cfg.yml", "r") as f:
@@ -121,8 +116,6 @@ if __name__ == "__main__":
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
         group = experiment_cfg["group"] if "group" in experiment_cfg else None
-    # Add the fold to the configuration
-    experiment_cfg["fold"] = args.fold
     # Retrieve the input variables
     input_variables = experiment_cfg["context_variables"]
 
@@ -150,13 +143,12 @@ if __name__ == "__main__":
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    fold = args.fold if not args.full else None
     val_or_test = "test" if args.full else "val"
     train_dataset, train_loader = load_dataset(
-        cfg, input_variables, tasks, "train", fold=args.fold
+        cfg, input_variables, tasks, "train",
     )
     val_dataset, val_loader = load_dataset(
-        cfg, input_variables, tasks, val_or_test, fold=args.fold
+        cfg, input_variables, tasks, val_or_test,
     )
 
     # ====== W+B LOGGER ====== #
