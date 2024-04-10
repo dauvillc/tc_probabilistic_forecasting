@@ -43,12 +43,13 @@ if __name__ == "__main__":
             [
                 pd.read_hdf(_TCIR_PATH_1_, key="info", mode="r"),
                 pd.read_hdf(_TCIR_PATH_2_, key="info", mode="r"),
+                pd.read_hdf(_TCIR_PATH_3_, key="info", mode="r"),
             ]
         ).reset_index(drop=True)
 
         # Load the datacubes and concatenate them at once
         datacube = xr.open_mfdataset(
-            [_TCIR_PATH_1_, _TCIR_PATH_2_],
+            [_TCIR_PATH_1_, _TCIR_PATH_2_, _TCIR_PATH_3_],
             combine="nested",
             concat_dim="phony_dim_4",
             chunks={"phony_dim_4": 8},
