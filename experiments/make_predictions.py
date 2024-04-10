@@ -66,8 +66,9 @@ if __name__ == "__main__":
 
         # ===== DATA LOADING ===== #
         input_variables = cfg["input_variables"]
+        subset = "val" if cfg["experiment"]["fold"] is not None else "test"
         val_dataset, val_loader = load_dataset(
-            cfg, input_variables, run_tasks, "val", fold=cfg["experiment"]["fold"]
+            cfg, input_variables, run_tasks, subset, fold=cfg["experiment"]["fold"]
         )
 
         # ===== MODEL RECONSTUCTION ===== #
