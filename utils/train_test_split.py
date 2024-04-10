@@ -4,7 +4,7 @@ Implements functions to help with train / val / test splitting.
 """
 
 import numpy as np
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import KFold
 
 
 def kfold_split(trajectories, n_splits=5, random_state=42):
@@ -46,12 +46,9 @@ def kfold_split(trajectories, n_splits=5, random_state=42):
     return splits
 
 
-def stormwise_train_test_split(ibtracs_data, train_size=0.8, test_size=0.2, random_state=42):
+def stormwise_train_test_split(ibtracs_data, train_years=None, test_years=2017, random_state=42):
     """
     Splits the IBTrACS dataset into train and test sets.
-    The returned splits contain different storms and thus disjoint tracks.
-    If a trajectory "XXXX" is split into subtrajectories "XXXX_0", "XXXX_1", etc.,
-    then all of these subtrajectories are included in the same split.
 
     Parameters
     ----------
@@ -59,10 +56,10 @@ def stormwise_train_test_split(ibtracs_data, train_size=0.8, test_size=0.2, rand
         Preprocessed [subset of the] IBTrACS dataset.
         The dataset must be ordered by SID, and then valid time.
         The SIDs must be ordered by time of the first record of the storm (as in the original dataset).
-    train_size : float, optional.
-        Size of the train set.
-    test_size : float, optional.
-        Size of the test set.
+    train_years : int or list of int
+        Years to include in the train set. Defaults to all years except the test years.
+    test_years : int or list of int
+        Years to include in the test set. Defaults to 2017.
     random_state : int, optional.
         If None, the random state is still set to a default value for reproducibility.
 
@@ -73,25 +70,23 @@ def stormwise_train_test_split(ibtracs_data, train_size=0.8, test_size=0.2, rand
     test_indices : numpy.ndarray
         Indices of the test set in the IBTrACS dataset.
     """
-    # Retrieve all unique SIDs
-    sids = ibtracs_data['SID'].unique()
-    # Some SIDs are "XXXX_k" to indicate the kth subtrajectory of the storm "XXXX".
-    # We want to keep these subtrajectories together in the same split.
-    # We'll thus ignore the "_k" suffix while splitting the dataset.
-    merged_sids = np.unique(np.array([sid.split('_')[0] for sid in sids]))
-
-    # Split the SIDs into train, val and test sets
-    train_sids, test_sids = train_test_split(merged_sids,
-                                             train_size=train_size,
-                                             test_size=test_size,
-                                             random_state=random_state)
-    # Add back the "_k" suffix to the SIDs: if 'XXXX' is in a split, add all 'XXXX_k' that are
-    # in sids to the split as well.
-    train_sids = [sid for sid in sids if sid.split('_')[0] in train_sids]
-    test_sids = [sid for sid in sids if sid.split('_')[0] in test_sids]
     # Retrieve the indices of the train, val and test sets from the SIDs.
-    train_indices = ibtracs_data[ibtracs_data['SID'].isin(train_sids)].index.values
-    test_indices = ibtracs_data[ibtracs_data['SID'].isin(test_sids)].index.values
+    # A SID has the form 'YEARXXX...'. We can thus extract the year from the first 4 characters.
+    years = np.array([int(sid[:4]) for sid in ibtracs_data['SID']])
+    # Retrieve the years to include in the train and test sets
+    if isinstance(test_years, int):
+        test_years = [test_years]
+    if train_years is None:
+        train_years = [year for year in np.unique(years) if year not in test_years]
+    elif isinstance(train_years, int):
+        train_years = [train_years]
+    elif isinstance(train_years, list):
+        # Check that the train and test years are disjoint
+        if any(year in train_years for year in test_years):
+            raise ValueError("The train and test years must be disjoint.")
+        train_years = np.array(train_years)
+    train_indices = ibtracs_data[np.isin(years, train_years)].index.values
+    test_indices = ibtracs_data[np.isin(years, test_years)].index.values
 
     return train_indices, test_indices
 

@@ -13,11 +13,11 @@ import yaml
 import xarray as xr
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+from dask.diagnostics import ProgressBar
 from tqdm import tqdm
 from utils.utils import hours_to_sincos, months_to_sincos, sshs_category_array
 from utils.preprocessing import grouped_shifts_and_deltas
-from utils.train_test_split import stormwise_train_test_split, kfold_split
+from utils.train_test_split import stormwise_train_test_split
 
 
 if __name__ == "__main__":
@@ -27,6 +27,7 @@ if __name__ == "__main__":
     # Paths to the TCIR dataset
     _TCIR_PATH_1_ = cfg["paths"]["tcir_atln"]  # Atlantic part
     _TCIR_PATH_2_ = cfg["paths"]["tcir_sh"]  # Southern Hemisphere part
+    _TCIR_PATH_3_ = cfg["paths"]["tcir_2017"]  # 2017 part
     # Path to the ERA5 patches
     _ERA5_PATCHES_PATH_ = cfg["paths"]["era5_patches"]
     # Output directory
@@ -46,10 +47,12 @@ if __name__ == "__main__":
         ).reset_index(drop=True)
 
         # Load the datacubes and concatenate them at once
-        datacube = xr.combine_nested(
-            [xr.open_dataset(_TCIR_PATH_1_)["matrix"], xr.open_dataset(_TCIR_PATH_2_)["matrix"]],
+        datacube = xr.open_mfdataset(
+            [_TCIR_PATH_1_, _TCIR_PATH_2_],
+            combine="nested",
             concat_dim="phony_dim_4",
-        )
+            chunks={"phony_dim_4": 8},
+            )['matrix']
 
         # === TABULAR DATA PREPROCESSING ===
         # Rename the columns to match IBTrACS
@@ -123,20 +126,12 @@ if __name__ == "__main__":
         # Add coordinates for the sid_time dimension
         # This coordinate will be in the format of a tuple (SID, ISO_TIME)
         datacube = datacube.assign_coords(
-            sid=("sid_time", data_info["SID"].values), time=("sid_time", data_info["ISO_TIME"].values)
+            sid=("sid_time", data_info["SID"].values),
+            time=("sid_time", data_info["ISO_TIME"].values),
         )
 
         # Finally, we'll add a coordinate for the variable dimension
         datacube = datacube.assign_coords(variable=("variable", ["IR", "PMW"]))
-
-        # Plot the histogram of the pixel values for each channel
-        # Set the y-axis to log scale
-        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-        for k, var in enumerate(["IR", "PMW"]):
-            datacube.sel(variable=var).plot.hist(ax=axes[k], bins=100)
-            axes[k].set_title(f"{var} channel")
-            axes[k].set_yscale("log")
-        plt.savefig("figures/pixel_histograms.png")
 
         # === OUTLIERS AND MISSING VALUES ==== (SEE NOTEBOOK FOR EXPLAINATIONS)
         print("Processing outliers and missing values...")
@@ -216,16 +211,17 @@ if __name__ == "__main__":
 
     # === CONCATENATION WITH ERA5 =======
     # Load the ERA5 patches
-    era5 = xr.open_mfdataset(_ERA5_PATCHES_PATH_ + "/*_surf*.nc", combine="nested", concat_dim="sid_time")
+    era5 = xr.open_mfdataset(
+        _ERA5_PATCHES_PATH_ + "/*_surf*.nc", combine="nested", concat_dim="sid_time",
+        chunks={"sid_time": 'auto'},
+    )
     # Add a 'sid_time' index to ERA5 and to TCIR
-    era5 = era5.set_xindex(['sid', 'time'])
-    datacube = datacube.set_xindex(['sid', 'time'])
+    era5 = era5.set_xindex(["sid", "time"])
+    datacube = datacube.set_xindex(["sid", "time"])
     # Convert the TCIR DataArray to a Dataset so that we can use merge():
     datacube = datacube.to_dataset(dim="variable")
     # Merge the ERA5 dataset with the TCIR dataset
-    datacube = xr.merge([datacube, era5], compat="equals", join="inner")
-    # Convert back to a DataArray
-    datacube = datacube.to_array(dim="variable")
+    datacube = xr.merge([datacube, era5], compat="equals", join="left")
     # Destroy the MultiIndex, which won't be needed anymore and can't be saved to netCDF
     datacube = datacube.reset_index("sid_time")
 
@@ -253,8 +249,18 @@ if __name__ == "__main__":
     # 1. Load the set of time steps to shift the variables
     shifts = cfg["preprocessing"]["steps"]
     # 2. Fixed set of variables to shift and compute deltas
-    shifted_vars = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP", "SSHS", "HOUR_COS", "HOUR_SIN",
-                    "MONTH_COS", "MONTH_SIN"]
+    shifted_vars = [
+        "INTENSITY",
+        "LON",
+        "LAT",
+        "R35_4qAVG",
+        "MSLP",
+        "SSHS",
+        "HOUR_COS",
+        "HOUR_SIN",
+        "MONTH_COS",
+        "MONTH_SIN",
+    ]
     delta_cols = ["INTENSITY", "LON", "LAT", "R35_4qAVG", "MSLP"]
     # 3. Shift the variables and compute the deltas
     data_info = grouped_shifts_and_deltas(data_info, "SID", shifted_vars, delta_cols, shifts)
@@ -275,19 +281,24 @@ if __name__ == "__main__":
 
     # === TRAIN/TEST SPLIT ===
     # Split into train/test sets
-    train_idx, test_idx = stormwise_train_test_split(data_info, train_size=0.8, test_size=0.2)
-    print("Train/test split:", f"{len(train_idx)} / {len(test_idx)}")
+    train_idx, test_idx = stormwise_train_test_split(data_info, test_years=2016)
+    # Re-split the training set into a training set and a validation set
+    train_idx, val_idx = stormwise_train_test_split(data_info.loc[train_idx], test_years=[2014, 2015])
+    print("Train/Validation/Test split:")
     train_info = data_info.loc[train_idx].copy()
+    val_info = data_info.loc[val_idx].copy()
     train_datacube = datacube.isel(sid_time=train_idx)
     test_info = data_info.loc[test_idx].copy()
+    val_datacube = datacube.isel(sid_time=val_idx)
     test_datacube = datacube.isel(sid_time=test_idx)
     # Reset the index of the dataframes so that they match datacube.isel
     train_info = train_info.reset_index(drop=True)
+    val_info = val_info.reset_index(drop=True)
     test_info = test_info.reset_index(drop=True)
     # We can now remove the rows which contain NaNs due to the shift operation
     train_info = train_info.dropna(axis="index")
+    val_info = val_info.dropna(axis="index")
     test_info = test_info.dropna(axis="index")
-    print("Normalizing the general training and test sets...")
     # Normalize the info and datacube using constants computed on the training set
     # Select a set of columns which won't be normalized (e.g. categorical columns)
     # Non-numeric columns will not be normalized
@@ -306,81 +317,39 @@ if __name__ == "__main__":
     # Info
     info_mean, info_std = numeric_df.mean(), numeric_df.std()
     train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
+    val_info[normalized_cols] = (val_info[normalized_cols] - info_mean) / info_std
     test_info[normalized_cols] = (test_info[normalized_cols] - info_mean) / info_std
     # Datacube
     train_datacube_mean = train_datacube.mean(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
     train_datacube_std = train_datacube.std(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
     train_datacube = (train_datacube - train_datacube_mean) / train_datacube_std
+    val_datacube = (val_datacube - train_datacube_mean) / train_datacube_std
     test_datacube = (test_datacube - train_datacube_mean) / train_datacube_std
-    print("Saving the general training and test sets...")
-    # Save the training set and the test set
+
+    print("Computing with Dask and saving...")
     # Retrieve the path to the save directory
     save_dir = Path(cfg["paths"]["tcir_preprocessed_dir"])
     # Create train/test subdirectories if they don't exist
-    for subdir in ["train", "test"]:
+    for subdir in ["train", "val", "test"]:
         subdir_path = save_dir / subdir
         subdir_path.mkdir(parents=True, exist_ok=True)
-    # Save the whole training set and the test set
-    train_datacube.to_netcdf(save_dir / "train" / "datacube.nc")
-    test_datacube.to_netcdf(save_dir / "test" / "datacube.nc")
+    # Save the data
+    with ProgressBar():
+        print("Training datacube...")
+        train_datacube.to_netcdf(save_dir / "train" / "datacube.nc")
+    with ProgressBar():
+        print("Validation datacube...")
+        val_datacube.to_netcdf(save_dir / "val" / "datacube.nc")
+    with ProgressBar():
+        print("Test datacube...")
+        test_datacube.to_netcdf(save_dir / "test" / "datacube.nc")
+    print("Saving the tabular data...")
     train_info.to_csv(save_dir / "train" / "info.csv", index=True)
+    val_info.to_csv(save_dir / "val" / "info.csv", index=True)
     test_info.to_csv(save_dir / "test" / "info.csv", index=True)
     # Save the normalization constants
+    print("Saving the normalization constants...")
     info_mean.to_csv(save_dir / "info_mean.csv", header=False)
     info_std.to_csv(save_dir / "info_std.csv", header=False)
     train_datacube_mean.to_netcdf(save_dir / "datacube_mean.nc")
     train_datacube_std.to_netcdf(save_dir / "datacube_std.nc")
-    # Free the training and test sets from memory
-    del train_datacube, test_datacube
-
-    # === K-FOLD CROSS-VALIDATION ===
-    # Perform the same operations as above, but for each fold of the training set
-    # Split the training set into K folds
-    splits = kfold_split(data_info, n_splits=cfg["preprocessing"]["n_folds"])
-    for k, (train_idx, val_idx) in enumerate(splits):
-        # Deduce the training and validation sets for the current fold
-        train_info = data_info.loc[train_idx].copy()
-        val_info = data_info.loc[val_idx].copy()
-        train_datacube = datacube.isel(sid_time=train_idx)
-        val_datacube = datacube.isel(sid_time=val_idx)
-        # Reset the index of the dataframes so that they match datacube.isel
-        train_info = train_info.reset_index(drop=True)
-        val_info = val_info.reset_index(drop=True)
-        # We can now remove the rows which contain NaNs due to the shift operation
-        train_info = train_info.dropna(axis="index")
-        val_info = val_info.dropna(axis="index")
-        print(f"Normalizing fold {k}...")
-        # Normalize the info and datacube using constants computed on the
-        # training part of the fold
-        numeric_df = train_info.select_dtypes(include=[np.number]).copy()
-        numeric_df = numeric_df[normalized_cols]
-        # Info
-        info_mean, info_std = numeric_df.mean(), numeric_df.std()
-        train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
-        val_info[normalized_cols] = (val_info[normalized_cols] - info_mean) / info_std
-        # Datacube
-        train_datacube_mean = train_datacube.mean(
-            dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
-        )
-        train_datacube_std = train_datacube.std(
-            dim=["sid_time", "h_pixel_offset", "v_pixel_offset"]
-        )
-        train_datacube = (train_datacube - train_datacube_mean) / train_datacube_std
-        val_datacube = (val_datacube - train_datacube_mean) / train_datacube_std
-        print(f"Saving data for fold {k}...")
-        # Specific directory for the fold
-        save_dir_fold = save_dir / f"fold_{k}"
-        # Create the subdirectories if they don't exist
-        for subdir in ["train", "val"]:
-            subdir_path = save_dir_fold / subdir
-            subdir_path.mkdir(parents=True, exist_ok=True)
-        # Save the sub-training set and the validation set
-        train_datacube.to_netcdf(save_dir_fold / "train" / "datacube.nc")
-        val_datacube.to_netcdf(save_dir_fold / "val" / "datacube.nc")
-        train_info.to_csv(save_dir_fold / "train" / "info.csv", index=True)
-        val_info.to_csv(save_dir_fold / "val" / "info.csv", index=True)
-        # Save the normalization constants
-        info_mean.to_csv(save_dir_fold / "info_mean.csv", header=False)
-        info_std.to_csv(save_dir_fold / "info_std.csv", header=False)
-        train_datacube_mean.to_netcdf(save_dir_fold / "datacube_mean.nc")
-        train_datacube_std.to_netcdf(save_dir_fold / "datacube_std.nc")
