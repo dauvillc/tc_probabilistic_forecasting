@@ -14,7 +14,6 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
-from tqdm import tqdm
 from utils.utils import hours_to_sincos, months_to_sincos, sshs_category_array
 from utils.preprocessing import grouped_shifts_and_deltas
 from utils.train_test_split import stormwise_train_test_split
@@ -53,7 +52,7 @@ if __name__ == "__main__":
             combine="nested",
             concat_dim="phony_dim_4",
             chunks={"phony_dim_4": 8},
-            )['matrix']
+        )["matrix"]
 
         # === TABULAR DATA PREPROCESSING ===
         # Rename the columns to match IBTrACS
@@ -138,62 +137,8 @@ if __name__ == "__main__":
         print("Processing outliers and missing values...")
         # Convert the unreasonably large values to NaNs
         datacube = datacube.where(datacube[:, :, :, 1] < 10 ^ 3)
-        # Compute the ratio of NaNs (native + converted from outliers) for each sample
-        nan_counts = np.array([datacube[k].isnull().sum() for k in range(datacube.shape[0])])
-        nan_ratios = nan_counts / (datacube.shape[1] * datacube.shape[2] * 2)
-        print("Average NaN ratio: ", nan_ratios.mean(), " std: ", nan_ratios.std())
 
-        # * For every storm S that contains at least one sample that is more than 10% NaN:
-        #   * Find all segments of S's trajectory that do not contain any NaN;
-        #   * Consider each of those segments as an independent trajectory, by giving them new SIDs.
-        #   * Discard the samples containing more than 10% of NaNs.
-        # * Where the images contain less than 10% of NaNs, fill them with zeros.
-
-        # Retrieve the index of the samples that are fully NaN (in the sense of over 10%)
-        where_full_nan = np.where(nan_ratios >= 0.1)[0]
-        # Retrieve the SIDs corresponding to those samples
-        sids_with_full_nan = data_info.iloc[where_full_nan]["SID"].unique()
-        print('"Full" NaN proportion: ', where_full_nan.shape[0] / datacube.shape[0])
-        print(
-            'Proportion of storms that include at least one "full" NaN sample: ',
-            sids_with_full_nan.shape[0] / data_info["SID"].unique().shape[0],
-        )
-
-        print("Processing storms including at least one full-NaN sample...")
-        for sid in tqdm(sids_with_full_nan):
-            segments = []
-            current_segment = []
-            currently_in_segment = False
-            # Iterate through the samples of that storm. If we find a NaN, that's the end
-            # of the current segment. Keep iterating until finding a non full-NaN sample,
-            # which is the start of a new segment.
-            for k in data_info[data_info["SID"] == sid].index:
-                if k in where_full_nan:
-                    if currently_in_segment:
-                        # Stop the current segment
-                        segments.append(np.array(current_segment))
-                        current_segment = []
-                        currently_in_segment = False
-                else:
-                    if not currently_in_segment:
-                        # Start a new segment if not currently in a segment
-                        currently_in_segment = True
-                    current_segment.append(k)
-            # Add the last segment
-            if currently_in_segment:
-                segments.append(np.array(current_segment))
-            # Give all samples in that segment a new SID
-            sid_values = data_info["SID"].values.copy()
-            for n_seg, seg in enumerate(segments):
-                sid_values[seg] = sid_values[seg] + f"_{n_seg}"
-            data_info["SID"] = sid_values
-        # Drop the samples that are fully NaNs
-        data_info = data_info.drop(index=where_full_nan)
-        # Select the index of data_info (which doesn't contain the full-NaN samples anymore) in the datacube
-        datacube = datacube.isel(sid_time=data_info.index)
-        # Reset the index of the tabular data, so that it matches that of the datacube
-        data_info = data_info.reset_index(drop=True)
-        # We can now interpolate the partially-NaN images
+        # Interpolate the partially-NaN images
         datacube = datacube.ffill("h_pixel_offset")
         datacube = datacube.ffill("v_pixel_offset")
         # NaN values at the border won't be interpolated, we'll fill them with zeros.
@@ -213,8 +158,10 @@ if __name__ == "__main__":
     # === CONCATENATION WITH ERA5 =======
     # Load the ERA5 patches
     era5 = xr.open_mfdataset(
-        _ERA5_PATCHES_PATH_ + "/*_surf*.nc", combine="nested", concat_dim="sid_time",
-        chunks={"sid_time": 'auto'},
+        _ERA5_PATCHES_PATH_ + "/*_surf*.nc",
+        combine="nested",
+        concat_dim="sid_time",
+        chunks={"sid_time": "auto"},
     )
     # Add a 'sid_time' index to ERA5 and to TCIR
     era5 = era5.set_xindex(["sid", "time"])
@@ -284,7 +231,9 @@ if __name__ == "__main__":
     # Split into train/test sets
     train_idx, test_idx = stormwise_train_test_split(data_info, test_years=2016)
     # Re-split the training set into a training set and a validation set
-    train_idx, val_idx = stormwise_train_test_split(data_info.loc[train_idx], test_years=[2014, 2015])
+    train_idx, val_idx = stormwise_train_test_split(
+        data_info.loc[train_idx], test_years=[2014, 2015]
+    )
     print("Train/Validation/Test split:")
     train_info = data_info.loc[train_idx].copy()
     val_info = data_info.loc[val_idx].copy()
@@ -317,12 +266,25 @@ if __name__ == "__main__":
     # First, normalize the whole training set and test set using the training set's mean and std
     # Info
     info_mean, info_std = numeric_df.mean(), numeric_df.std()
-    train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
-    val_info[normalized_cols] = (val_info[normalized_cols] - info_mean) / info_std
-    test_info[normalized_cols] = (test_info[normalized_cols] - info_mean) / info_std
     # Datacube
     train_datacube_mean = train_datacube.mean(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
     train_datacube_std = train_datacube.std(dim=["sid_time", "h_pixel_offset", "v_pixel_offset"])
+    # Save the normalization constants
+    print("Saving the normalization constants...")
+    info_mean.to_csv(save_dir / "info_mean.csv", header=False)
+    info_std.to_csv(save_dir / "info_std.csv", header=False)
+    train_datacube_mean.to_netcdf(save_dir / "datacube_mean.nc")
+    train_datacube_std.to_netcdf(save_dir / "datacube_std.nc")
+    print("Normalizing the data...")
+    # Perform the normalization on the info
+    train_info[normalized_cols] = (train_info[normalized_cols] - info_mean) / info_std
+    val_info[normalized_cols] = (val_info[normalized_cols] - info_mean) / info_std
+    test_info[normalized_cols] = (test_info[normalized_cols] - info_mean) / info_std
+    # Perform the normalization on the datacube
+    # But first, reload the means and stds from the files
+    # (see https://docs.xarray.dev/en/stable/user-guide/dask.html#chunking-and-performance)
+    train_datacube_mean = xr.open_dataset(save_dir / "datacube_mean.nc")
+    train_datacube_std = xr.open_dataset(save_dir / "datacube_std.nc")
     train_datacube = (train_datacube - train_datacube_mean) / train_datacube_std
     val_datacube = (val_datacube - train_datacube_mean) / train_datacube_std
     test_datacube = (test_datacube - train_datacube_mean) / train_datacube_std
@@ -348,9 +310,3 @@ if __name__ == "__main__":
     train_info.to_csv(save_dir / "train" / "info.csv", index=True)
     val_info.to_csv(save_dir / "val" / "info.csv", index=True)
     test_info.to_csv(save_dir / "test" / "info.csv", index=True)
-    # Save the normalization constants
-    print("Saving the normalization constants...")
-    info_mean.to_csv(save_dir / "info_mean.csv", header=False)
-    info_std.to_csv(save_dir / "info_std.csv", header=False)
-    train_datacube_mean.to_netcdf(save_dir / "datacube_mean.nc")
-    train_datacube_std.to_netcdf(save_dir / "datacube_std.nc")
