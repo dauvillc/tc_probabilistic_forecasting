@@ -164,9 +164,13 @@ def extract_patches(vartype, args):
                 # Find the lat/lon point that is closest to the storm's center
                 center_lon = find_nearest(dataset.coords["longitude"].data, row.LON)
                 center_lat = find_nearest(dataset.coords["latitude"].data, row.LAT)
-                # The treatment differs here depending on whether rescaling is required or not
-                offsets_lon = np.arange(-patch_size // 2, patch_size // 2)
+                # The offsets are the pixel offsets from the center of the patch
+                if patch_size % 2 == 0:
+                    offsets_lon = np.arange(-patch_size // 2, patch_size // 2)
+                else:
+                    offsets_lon = np.arange(-patch_size // 2 + 1, patch_size // 2 + 1)
                 offsets_lat = -offsets_lon
+                # The treatment differs here depending on whether rescaling is required or not
                 if rescale_res is None:
                     # Define the area to extract
                     area_lon = center_lon + offsets_lon * spatial_res

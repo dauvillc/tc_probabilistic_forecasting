@@ -168,6 +168,15 @@ if __name__ == "__main__":
     datacube = datacube.set_xindex(["sid", "time"])
     # Convert the TCIR DataArray to a Dataset so that we can use merge():
     datacube = datacube.to_dataset(dim="variable")
+    # There might be a 1 shift between the spatial coords of the two datasets
+    # (eg -101 to 99 for ERA5 and -100 to 100 for TCIR).
+    # This was fixed in the preprocessing of the ERA5 patches, but I don't
+    # have time to rerun it rn. So we'll just set the ERA5 coords to match
+    # the TCIR coords :'). Anyway the resolution and patch size are the same.
+    era5 = era5.assign_coords(
+            h_pixel_offset=('h_pixel_offset', datacube.h_pixel_offset.data),
+            v_pixel_offset=('v_pixel_offset', datacube.v_pixel_offset.data)
+        )
     # Merge the ERA5 dataset with the TCIR dataset
     datacube = xr.merge([datacube, era5], compat="equals", join="left")
     # Destroy the MultiIndex, which won't be needed anymore and can't be saved to netCDF
