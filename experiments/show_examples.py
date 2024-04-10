@@ -157,35 +157,35 @@ if __name__ == "__main__":
     past_datacubes = past_datacubes['tcir']
     # Denormalize the target variables
     true_locations = train_dataset.denormalize_tabular_target(target_locations)['vmax']
-    # past_datacubes is a sequence of images, of shape (batch_size, channels, sequence_length, height, width)
+    # past_datacubes is a sequence of images, of shape (N, C, sequence_length, height, width)
+    # For each channel, we show the sequence of images for a few examples
     # Create a figure with one row per example and one column per time step
     n_examples = 30
     _, C, T, H, W = past_datacubes.shape
-    fig, axs = plt.subplots(n_examples, T, figsize=(T, n_examples))
-    for i in range(n_examples):
-        for t in range(T):
-            axs[i, t].imshow(past_datacubes[i, 0, t], cmap="gray")
-            axs[i, t].axis("off")
-            # Print the target location as title of each subplot
-            axs[i, t].set_title(f"{true_locations[i, t].item():.1f} kts")
-    plt.tight_layout()
-    plt.savefig("figures/past_datacubes.png")
+    for c in range(C):
+        fig, axs = plt.subplots(n_examples, T, figsize=(T, n_examples))
+        for i in range(n_examples):
+            for t in range(T):
+                axs[i, t].imshow(past_datacubes[i, c, t], cmap="gray")
+                axs[i, t].axis("off")
+                # Print the target location as title of each subplot
+                axs[i, t].set_title(f"{true_locations[i, t].item():.1f} kts")
+        plt.tight_layout()
+        plt.savefig(f"figures/examples/past_datacubes_channel_{c}.png")
+        plt.close()
 
-    # Save every example image in a separate file
-    # Do it for both channels
+    # Now, for each example, create a figure with one row per time step and one column per channel
     for i in range(n_examples):
+        fig, axs = plt.subplots(T, C, figsize=(C, T))
         for t in range(T):
-            # Channel 0
-            plt.imshow(past_datacubes[i, 0, t], cmap="gray")
-            plt.axis("off")
-            # Remove all margins
-            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            plt.savefig(f"figures/examples/past_datacubes_{i}_t{t}_c0.png", bbox_inches="tight")
-            plt.close()
-            # Channel 1
-            plt.imshow(past_datacubes[i, 1, t], cmap="gray")
-            plt.axis("off")
-            # Remove all margins
-            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            plt.savefig(f"figures/examples/past_datacubes_{i}_t{t}_c1.png", bbox_inches="tight")
-            plt.close()
+            for c in range(C):
+                axs[t, c].imshow(past_datacubes[i, c, t], cmap="gray")
+                axs[t, c].axis("off")
+                # Print the target location as title of each subplot
+                axs[t, c].set_title(f"{true_locations[i, t].item():.1f} kts")
+                # Disable the axis and remove the margins
+                axs[t, c].axis("off")
+                axs[t, c].margins(0)
+        plt.tight_layout()
+        plt.savefig(f"figures/examples/past_datacubes_example_{i}.png")
+        plt.close()

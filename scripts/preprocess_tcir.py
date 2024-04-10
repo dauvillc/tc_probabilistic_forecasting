@@ -43,7 +43,7 @@ if __name__ == "__main__":
                 pd.read_hdf(_TCIR_PATH_1_, key="info", mode="r"),
                 pd.read_hdf(_TCIR_PATH_2_, key="info", mode="r"),
             ]
-        )
+        ).reset_index(drop=True)
 
         # Load the datacubes and concatenate them at once
         datacube = xr.combine_nested(

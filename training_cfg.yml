@@ -1,6 +1,6 @@
 experiment:
-  name: det_0_6-24_l05
-  group: tests
+  name: det_tcir
+  group: det_tcir
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -8,6 +8,8 @@ experiment:
   target_steps: [1, 2, 3, 4]
   # Size of the input and output patches, in pixels (resolution=0.07°)
   patch_size: 128
+  # Which channels to use as input
+  input_channels: ['IR', 'PMW']
   # Which contextual variables to include: (must be at least [])
   # LAT, LON, HOUR_COS, HOUR_SIN
   context_variables: ['LAT', 'LON', 'HOUR_COS', 'HOUR_SIN']
@@ -35,18 +37,6 @@ tasks:
     distribution: deterministic
     predict_residuals: false
     weight: 1
-  sshs:
-    output_variables: ['SSHS']
-    distribution: categorical
-    num_classes: 7
-    predict_residuals: false
-    weight: 0
-  ri:
-    output_variables: ['RI']
-    distribution: categorical
-    num_classes: 2
-    predict_residuals: false
-    weight: 1
   # mslp:
   # output_variables: ['MSLP']
   # distribution: deterministic
@@ -63,7 +53,7 @@ training_settings:
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 16-mixed
   # Number of workers for the data loading
-  num_workers: 0
+  num_workers: 9
   # Weight decay
   weight_decay: 0.05
   # Whether to enable data augmentation
@@ -71,7 +61,7 @@ training_settings:
   # Sampling weights
   sampling_weights: false
   # Whether to use a weighted loss for extreme events
-  use_weighted_loss: false
+  use_weighted_loss: true
   # Exponential tilting parameter of the loss (based on TERM)
   # 0 or None will be interpreted as no tilting
   loss_tilting: 0
@@ -92,9 +82,9 @@ model_hyperparameters:
     # What type of base block to use (either 'cbam' or 'conv')
     base_block: conv
     n_blocks: 5
-    base_channels: 4
+    base_channels: 8
   temporal_encoder:
     reduction_factor: 16
-    n_blocks: 0
+    n_blocks: 3
   prediction_head:
     reduction_factor: 16
