@@ -16,6 +16,7 @@ from pathlib import Path
 from utils.utils import sshs_category
 from utils.wandb import retrieve_wandb_runs
 from utils.io import load_predictions_and_targets
+from utils.utils import matplotlib_markers
 
 
 if __name__ == "__main__":
@@ -102,6 +103,9 @@ if __name__ == "__main__":
     col_run_id, col_group, col_fold, col_crps = [], [], [], []
     col_time, col_category = [], []
     for run_id in run_ids:
+        # If the task is not performed by the run, skip it
+        if eval_task not in all_tasks[run_id]:
+            continue
         # Compute the metric for the run using the metric function
         # of the run's PredictionDistribution object
         distrib = all_tasks[run_id][eval_task]["distrib_obj"]
@@ -158,40 +162,74 @@ if __name__ == "__main__":
     else:
         results_per_time = results
         results_per_cat = results
+    # Save the aggregated results to a CSV file
+    results_per_time.to_csv(results_dir / "results_per_time.csv", index=False)
+    results_per_cat.to_csv(results_dir / "results_per_cat.csv", index=False)
 
     # ================== PLOTTING =================== #
+    sns.set_theme(style="whitegrid", context="poster")
+    # Set the legend box to fancy and add a shadow
+    plt.rcParams["legend.fancybox"] = False
+    plt.rcParams["legend.shadow"] = True
+    def place_legend(ax):
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.23),
+                  ncol=len(run_ids))
+    # Create a list of markers and colors for the plots. Each run will be represented
+    # by a the same marker and color across all plots.
+    names = [configs[run_id]['experiment']['name'] for run_id in run_ids]
+    markers = matplotlib_markers(len(run_ids))
+    markers = {n: marker for n, marker in zip(names, markers)}
+    cmap = plt.get_cmap('tab10', len(run_ids))
+    colors = {n: cmap(k) for k, n in enumerate(names)}
+
     # Plot the metric for each time step, grouped by group
-    sns.set_theme(style="darkgrid")
     fig, ax = plt.subplots()
-    sns.boxplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax)
+    sns.boxplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax,
+                palette=colors)
     ax.set_title(f"{eval_task} - {metric} over lead time")
     ax.set_xlabel("Lead time (hours)")
     ax.set_ylabel(metric)
     # Set the x-axis to be in hours
     ax.set_xticks(range(len(results_per_time["time_step"].unique())))
     ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
-    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time.png")
+    # Put the legend below the plot
+    place_legend(ax)
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time.png",
+                bbox_inches='tight')
     # Do the same but with a line plot
     fig, ax = plt.subplots()
-    sns.lineplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax)
+    sns.lineplot(data=results_per_time, x="time_step", y=metric, hue="group", ax=ax,
+                 palette=colors, markers=markers)
     ax.set_title(f"{eval_task} - {metric} over lead time")
     ax.set_xlabel("Lead time (hours)")
     ax.set_ylabel(f'{metric} - 95% CI')
     ax.set_xticks(results_per_time["time_step"].unique())
     ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
-    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time_line.png")
+    place_legend(ax)
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time_line.png",
+                bbox_inches='tight')
 
     # Plot the metric for each SSHS category, grouped by group
     fig, ax = plt.subplots()
-    sns.boxplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax)
+    sns.boxplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax,
+                palette=colors)
     ax.set_title(f"{eval_task} - {metric} over SSHS category")
     ax.set_xlabel("SSHS category")
     ax.set_ylabel(metric)
-    plt.savefig(results_dir / f"{eval_task}_{metric}_category.png")
+    ax.set_xticks(range(-1, 6))
+    ax.set_xticklabels(["TD", "TS", "C1", "C2", "C3", "C4", "C5"])
+    place_legend(ax)
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category.png",
+                bbox_inches='tight')
     # Do the same but with a line plot
     fig, ax = plt.subplots()
-    sns.lineplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax)
+    sns.lineplot(data=results_per_cat, x="category", y=metric, hue="group", ax=ax,
+                 palette=colors, markers=markers)
     ax.set_title(f"{eval_task} - {metric} over SSHS category")
     ax.set_xlabel("SSHS category")
     ax.set_ylabel(f'{metric} - 95% CI')
-    plt.savefig(results_dir / f"{eval_task}_{metric}_category_line.png")
+    ax.set_xticks(range(-1, 6))
+    ax.set_xticklabels(["TD", "TS", "C1", "C2", "C3", "C4", "C5"])
+    place_legend(ax)
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category_line.png",
+                bbox_inches='tight')
