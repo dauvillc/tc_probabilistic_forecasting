@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 import scipy.stats as ss
 import numpy as np
+import seaborn as sns
 from torch.distributions import LogNormal
 
 
@@ -67,6 +68,7 @@ class WeightedLoss:
 
         # Plot the weights if requested
         if plot_weights is not None:
+            sns.set_theme(context="poster", style="whitegrid")
             # On the same plot, show:
             # * The histogram of the maximum intensities
             # * The fitted distribution
@@ -80,7 +82,7 @@ class WeightedLoss:
                 density=True,
                 bins=100,
                 alpha=0.5,
-                label="Empirical max intensities distribution",
+                label="Noised samples intensities distribution",
             )
             # Plot the fitted distribution
             x = torch.linspace(min(max_intensities), max(max_intensities), 100)
@@ -90,11 +92,13 @@ class WeightedLoss:
             ax2.plot(x, (1 / y) / self.weights_integral, "r.", label="Weights")
             # Disable the grid for the weights
             ax2.grid(False)
-            ax1.set_xlabel("Max intensity")
+            ax1.set_xlabel("Samples intensity (kts)")
             ax1.set_ylabel("Density")
             ax2.set_ylabel("Weights")
-            fig.legend()
-            plt.savefig(plot_weights)
+            # Put the legend on top of the plot
+            fig.legend(loc="upper center", bbox_to_anchor=(0.5, 1.1),
+                       fancybox=True, shadow=True, prop={"size": 18})
+            plt.savefig(plot_weights, transparent=True, bbox_inches="tight")
         print("Weighted loss set up")
 
     def __call__(self, loss_values, intensities, reduce_mean=True):
