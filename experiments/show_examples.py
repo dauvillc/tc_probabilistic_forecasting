@@ -12,6 +12,7 @@ from distributions.normal import NormalDistribution
 from distributions.quantile_composite import QuantileCompositeDistribution
 from distributions.categorical import CategoricalDistribution
 from data_processing.assemble_experiment_dataset import load_dataset
+import os
 import matplotlib.pyplot as plt
 import argparse
 import wandb
@@ -99,13 +100,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Flag to indicate that the script is run as part of a sweep.",
     )
-    parser.add_argument(
-        "-f",
-        "--fold",
-        type=int,
-        help="Cross-validation fold to use for training.",
-        required=True,
-    )
     args = parser.parse_args()
 
     # Load the training configuration file
@@ -115,8 +109,6 @@ if __name__ == "__main__":
         training_cfg = cfg["training_settings"]
         model_cfg = cfg["model_hyperparameters"]
         group = experiment_cfg["group"] if "group" in experiment_cfg else None
-    # Add the fold to the configuration
-    experiment_cfg["fold"] = args.fold
     # Retrieve the input variables
     input_variables = experiment_cfg["context_variables"]
 
@@ -145,11 +137,13 @@ if __name__ == "__main__":
 
     # ====== DATA LOADING ====== #
     train_dataset, train_loader = load_dataset(
-        cfg, input_variables, tasks, "train", fold=args.fold
+        cfg, input_variables, tasks, "train",
     )
-    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val", fold=args.fold)
+    val_dataset, val_loader = load_dataset(cfg, input_variables, tasks, "val")
 
     # ====== EXAMPLES VISUALIZATION ====== #
+    if not os.path.exists("figures/examples"):
+        os.makedirs("figures/examples")
     # Retrieve the first batch of the training dataset
     for batch in train_loader:
         break 
