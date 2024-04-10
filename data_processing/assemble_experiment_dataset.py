@@ -48,10 +48,6 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
     tcir_datacube = datacube_to_tensor(tcir_datacube)
 
     # ====== DATASET CREATION ====== #
-    # Data augmentation is only applied to the training dataset if requested
-    apply_data_aug = False
-    if "data_augmentation" in cfg["training_settings"] and subset == "train":
-        apply_data_aug = cfg["training_settings"]["data_augmentation"]
     # Create the custom dataset
     dataset = SuccessiveStepsDataset(
         subset,
@@ -64,7 +60,6 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset, fold=0):
         datacube_means,
         datacube_stds,
         cfg,
-        random_rotations=apply_data_aug,
     )
     # Create the sampler and data loaders
     batch_size = cfg["training_settings"]["batch_size"]

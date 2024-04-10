@@ -5,6 +5,7 @@ steps of a multiple time series, which can be either tabular data or images.
 """
 
 import torch
+import numpy as np
 from torchvision.transforms import v2
 from torchvision import tv_tensors
 
@@ -53,8 +54,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         DataArray of shape (C,) containing the stds of each channel in the datacubes.
     cfg: dict
         The configuration dictionary.
-    random_rotations: bool, optional
-        If True, the input datacubes are randomly rotated by an angle between -180 and 179 degrees.
     """
 
     def __init__(
@@ -69,7 +68,6 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         datacube_means,
         datacube_stds,
         cfg,
-        random_rotations=False,
     ):
         self.trajectories = trajectories
         self.input_columns = input_columns
@@ -82,21 +80,42 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.datacube_stds = datacube_stds
         self.past_steps = cfg["experiment"]["past_steps"]
         self.target_steps = cfg["experiment"]["target_steps"]
-        self.random_rotations = random_rotations
+        self.patch_size = cfg["experiment"]["patch_size"]
 
-        if self.random_rotations:
+        # Data augmentation: random rotations during training,
+        # 10 evenly spaced rotations during testing (as a form of ensemble prediction).
+        self.random_rotations = "none"
+        if cfg['training_settings']['data_augmentation'] == True:
+            if subset == "train":
+                self.random_rotations = "random"
+            elif subset == "test":
+                self.random_rotations = np.linspace(0, 360, 10, endpoint=False)
+
+        if isinstance(self.random_rotations, np.ndarray):
+            # If the data augmentation is not random, but a set of fixed rotations,
+            # apply the rotations to the datacubes.
+            self.transforms = [
+                v2.Compose(
+                    [
+                        v2.RandomRotation(degrees=[angle, angle]),
+                        v2.CenterCrop(self.patch_size),
+                    ]
+                )
+                for angle in self.random_rotations
+            ]
+        elif self.random_rotations == "random":
             # Create the random transformations to apply to the datacubes.
             # The datacube is randomly rotated by angle between -180 and 179 degrees,
             # and is then center-cropped to 64x64 pixels.
             self.transforms = v2.Compose(
                 [
                     v2.RandomRotation(degrees=(-180, 179)),
-                    v2.CenterCrop(cfg["experiment"]["patch_size"]),
+                    v2.CenterCrop(self.patch_size),
                 ]
             )
-        else:
+        elif self.random_rotations == "none":
             # Otherwise, just crop the center of the datacube.
-            self.transforms = v2.Compose([v2.CenterCrop(cfg["experiment"]["patch_size"])])
+            self.transforms = v2.Compose([v2.CenterCrop(self.patch_size)])
 
     def denormalize_tabular_target(self, variables, residuals=False):
         """
@@ -224,7 +243,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
             input_datacubes[name] = tv_tensors.Image(datacube)
 
         # Apply the transforms to the input datacubes.
-        input_datacubes = self.transforms(input_datacubes)
+        if isinstance(self.transforms, list):
+            input_datacubes = [transform(input_datacubes) for transform in self.transforms]
+        else:
+            input_datacubes = self.transforms(input_datacubes)
 
         return input_time_series, input_datacubes, output_time_series, output_residues
 
@@ -266,7 +288,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         # Retrieve the number of channels of the datacube:
         c = self.datacubes[name].shape[1]
         # Retrieve the size of the datacube after cropping:
-        h, w = self.transforms.transforms[-1].size
+        h, w = self.patch_size, self.patch_size
         return c, self.past_steps, h, w
 
     def context_size(self):

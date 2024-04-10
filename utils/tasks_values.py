@@ -195,3 +195,37 @@ class TasksValues:
                 distrib = tasks_values_objects[0].distribs[task_name]
                 result.add_residual(task_name, locations, residuals, distrib)
         return result
+
+    @staticmethod
+    def average(tasks_values_objects):
+        """
+        Averages the values stored in multiple TasksValues objects.
+
+        Parameters
+        ----------
+        tasks_values_objects : list of TasksValues
+            The objects to average.
+
+        Returns
+        -------
+        TasksValues
+            The averaged object.
+        """
+        result = TasksValues()
+        for task_name in tasks_values_objects[0].keys():
+            # First, tasks that have only final values
+            if task_name not in tasks_values_objects[0].locations:
+                # Stack the values
+                final_values = torch.stack([obj.final[task_name] for obj in tasks_values_objects], dim=0)
+                # Compute the average
+                final_values = final_values.mean(dim=0)
+                result.add(task_name, final_values, tasks_values_objects[0].distribs[task_name])
+            else:
+                # Do the same separately for locations and residuals
+                locations = torch.stack([obj.locations[task_name] for obj in tasks_values_objects], dim=0)
+                residuals = torch.stack([obj.residuals[task_name] for obj in tasks_values_objects], dim=0)
+                locations = locations.mean(dim=0)
+                residuals = residuals.mean(dim=0)
+                distrib = tasks_values_objects[0].distribs[task_name]
+                result.add_residual(task_name, locations, residuals, distrib)
+        return result

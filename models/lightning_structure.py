@@ -297,7 +297,17 @@ class StormPredictionModel(pl.LightningModule):
         Implements a prediction step.
         """
         past_variables, past_datacubes, true_locations, true_residuals = batch
-        predictions = self.forward(past_variables, past_datacubes)
+        # If past_datacubes is a list, then it's the same datacubes rotated at different angles
+        # to perform ensemble prediction. In this case, we need to average the predictions.
+        if isinstance(past_datacubes, list):
+            # Perform the predictions for each rotated datacube
+            predictions = []
+            for datacubes in past_datacubes:
+                predictions.append(self.forward(past_variables, datacubes))
+            # Average the predictions
+            predictions = TasksValues.average(predictions)
+        else:
+            predictions = self.forward(past_variables, past_datacubes)
         # Denormalize the predictions
         predictions = predictions.denormalize(self.dataset)
         return predictions
