@@ -20,7 +20,8 @@ from distributions.categorical import CategoricalDistribution
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make predictions on the validation or test set.")
     parser.add_argument(
-        "-i", "--run_id", type=str, default=None, help="The run id of the model to use."
+        "-i", "--run_ids", type=str, nargs="+",
+        default=None, help="The run ids of the models to use."
     )
     parser.add_argument(
         "-g",
@@ -32,10 +33,17 @@ if __name__ == "__main__":
                 Must not be used with --run_id.",
     )
     parser.add_argument(
+        "-s",
+        "--subset",
+        type=str,
+        default="test",
+        help="Subset to use for predictions. Can be 'test' or 'val'.",
+    )
+    parser.add_argument(
         "-w", "--workers", type=int, default=4, help="Number of workers to use for data loading."
     )
     args = parser.parse_args()
-    run_ids = [args.run_id] if args.run_id is not None else None
+    run_ids = args.run_ids
     groups = args.groups
     if run_ids is None and groups is None:
         raise ValueError("Either --run_id or --group must be provided.")
@@ -65,10 +73,9 @@ if __name__ == "__main__":
         current_run = wandb.init(project="tc_prediction", name=f"pred-{run.name}", job_type="pred")
 
         # ===== DATA LOADING ===== #
-        input_variables = cfg['experiment']["context_variables"]
-        subset = "val" if cfg['experiment']['use_full_dataset'] else "test"
+        input_variables = cfg["experiment"]["context_variables"]
         val_dataset, val_loader = load_dataset(
-            cfg, input_variables, run_tasks, subset, use_ensemble=True
+            cfg, input_variables, run_tasks, args.subset, use_ensemble=True
         )
 
         # ===== MODEL RECONSTUCTION ===== #
@@ -113,7 +120,9 @@ if __name__ == "__main__":
                         # If the task is a classification task, the distribution to use
                         # is a CategoricalDistribution
                         num_classes = task_cfg["num_classes"]
-                        batch_targets.add(task, true_locations[task], CategoricalDistribution(num_classes))
+                        batch_targets.add(
+                            task, true_locations[task], CategoricalDistribution(num_classes)
+                        )
                     else:
                         batch_targets.add(task, true_locations[task])
             targets.append(batch_targets)
