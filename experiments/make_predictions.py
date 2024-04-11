@@ -68,7 +68,7 @@ if __name__ == "__main__":
         input_variables = cfg['experiment']["context_variables"]
         subset = "val" if cfg['experiment']['use_full_dataset'] else "test"
         val_dataset, val_loader = load_dataset(
-            cfg, input_variables, run_tasks, subset,
+            cfg, input_variables, run_tasks, subset, use_ensemble=True
         )
 
         # ===== MODEL RECONSTUCTION ===== #

@@ -9,7 +9,7 @@ from utils.sampling import inverse_intensity_sampler
 from utils.datacube import datacube_to_tensor
 
 
-def load_dataset(cfg, input_variables, tabular_tasks, subset):
+def load_dataset(cfg, input_variables, tabular_tasks, subset, use_ensemble=False):
     """
     Assembles the dataset, performs the train/val/test split and creates the
     datasets and data loaders.
@@ -27,6 +27,9 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset):
             The list of the output variables.
     subset : str
         'train', 'val' or 'test'.
+    use_ensemble : bool, optional
+        If True, rotates the datacube by 10 evenly spaced angles and returns the average
+        prediction over the rotated datacubes. Default is False.
 
     Returns
     -------
@@ -57,6 +60,7 @@ def load_dataset(cfg, input_variables, tabular_tasks, subset):
         datacube_means,
         datacube_stds,
         cfg,
+        yield_ensemble=use_ensemble,
     )
     # Create the sampler and data loaders
     batch_size = cfg["training_settings"]["batch_size"]

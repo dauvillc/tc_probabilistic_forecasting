@@ -54,6 +54,10 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         DataArray of shape (C,) containing the stds of each channel in the datacubes.
     cfg: dict
         The configuration dictionary.
+    yield_ensemble: bool, optional
+        If True, yields an ensemble of inputs in which the datacube is roated ten times
+        by evenly spaced angles between 0 and 360 degrees. If False, defaults to whether
+        random rotations are enabled in the configuration file.
     """
 
     def __init__(
@@ -68,6 +72,7 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         datacube_means,
         datacube_stds,
         cfg,
+        yield_ensemble=False,
     ):
         self.trajectories = trajectories
         self.input_columns = input_columns
@@ -82,14 +87,17 @@ class SuccessiveStepsDataset(torch.utils.data.Dataset):
         self.target_steps = cfg["experiment"]["target_steps"]
         self.patch_size = cfg["experiment"]["patch_size"]
 
-        # Data augmentation: random rotations during training,
-        # 10 evenly spaced rotations during testing (as a form of ensemble prediction).
-        self.random_rotations = "none"
-        if cfg['training_settings']['data_augmentation'] == True:
-            if subset == "train":
-                self.random_rotations = "random"
-            elif subset == "test":
-                self.random_rotations = np.linspace(0, 360, 10, endpoint=False)
+        # Data augmentation: If requested, yield deterministic rotations of the datacubes
+        # to create an ensemble of inputs.
+        if yield_ensemble:
+            self.random_rotations = np.linspace(0, 360, 10, endpoint=False)
+        # Otherwise, apply a single random rotation to the datacubes if requested in the cfg
+        # and only for the training set (no augmentation for val and test sets).
+        else:
+            self.random_rotations = "none"
+            if cfg['training_settings']['data_augmentation'] == True:
+                if subset == "train":
+                    self.random_rotations = "random"
 
         if isinstance(self.random_rotations, np.ndarray):
             # If the data augmentation is not random, but a set of fixed rotations,
