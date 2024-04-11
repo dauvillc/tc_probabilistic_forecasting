@@ -27,8 +27,7 @@ if __name__ == "__main__":
         "-g",
         "--groups",
         nargs="+",
-        help="W&B groups to evaluate. Each group should be an ensemble of runs\
-                        of the same model on different folds.",
+        help="W&B groups to evaluate."
     )
     parser.add_argument(
         "-i",
@@ -96,11 +95,11 @@ if __name__ == "__main__":
     original_metric = metric
     if metric == "RMSE":
         metric = "MSE"
-    # We'll compute the metric for each run, on each fold.
+    # We'll compute the metric for each run
     # We'll store it in a DataFrame with the following columns:
-    # run_id, group, fold, time step, category, metric
+    # run_id, group, time step, category, metric
     # Lists to store the columns of the DataFrame
-    col_run_id, col_group, col_fold, col_crps = [], [], [], []
+    col_run_id, col_group, col_crps = [], [], []
     col_time, col_category = [], []
     for run_id in run_ids:
         # If the task is not performed by the run, skip it
@@ -120,7 +119,6 @@ if __name__ == "__main__":
         # Store the results in the future columns of the DataFrame
         col_run_id += [run_id] * N * T
         col_group += [runs[run_id].group] * N * T
-        col_fold += [configs[run_id]["experiment"]["fold"]] * N * T
         for i, t in enumerate(configs[run_id]["experiment"]["target_steps"]):
             col_crps += values[:, i].tolist()
             col_category += targets_cat[:, i].tolist()
@@ -130,7 +128,6 @@ if __name__ == "__main__":
         {
             "run_id": col_run_id,
             "group": col_group,
-            "fold": col_fold,
             "time_step": col_time,
             "category": col_category,
             metric: col_crps,
