@@ -69,7 +69,7 @@ class DeterministicDistribution(PredictionDistribution):
 
     def loss_function(self, y_pred, y_true, reduce_mean="all"):
         """
-        MSE Loss.
+        MAE Loss.
 
         Parameters
         ----------
@@ -80,7 +80,7 @@ class DeterministicDistribution(PredictionDistribution):
             Over which dimensions to reduce the mean.
             Can be "all", "samples", "time" or "none".
         """
-        return mse(y_pred, y_true, reduce_mean)
+        return mae(y_pred, y_true, reduce_mean)
 
     def hyperparameters(self):
         """
