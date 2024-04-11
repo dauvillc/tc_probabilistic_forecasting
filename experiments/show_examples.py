@@ -173,7 +173,7 @@ if __name__ == "__main__":
         fig, axs = plt.subplots(T, C, figsize=(C, T))
         for t in range(T):
             for c in range(C):
-                axs[t, c].imshow(past_datacubes[i, c, t], cmap="gray")
+                axs[t, c].imshow(past_datacubes[i, c, t], cmap="viridis")
                 axs[t, c].axis("off")
                 # Print the target location as title of each subplot
                 axs[t, c].set_title(f"{true_locations[i, t].item():.1f} kts")
