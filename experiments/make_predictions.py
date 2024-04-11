@@ -65,7 +65,7 @@ if __name__ == "__main__":
         current_run = wandb.init(project="tc_prediction", name=f"pred-{run.name}", job_type="pred")
 
         # ===== DATA LOADING ===== #
-        input_variables = cfg["input_variables"]
+        input_variables = cfg['experiment']["context_variables"]
         subset = "val" if cfg['experiment']['use_full_dataset'] else "test"
         val_dataset, val_loader = load_dataset(
             cfg, input_variables, run_tasks, subset,
@@ -78,7 +78,6 @@ if __name__ == "__main__":
         checkpoint = Path(artifact_dir) / "model.ckpt"
         # Reconstruct the model from the checkpoint
         datacube_shape = val_dataset.datacube_shape("tcir")
-        num_input_variables = len(input_variables)
         model = StormPredictionModel.load_from_checkpoint(
             checkpoint,
             input_datacube_shape=datacube_shape,
