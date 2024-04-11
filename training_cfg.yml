@@ -1,6 +1,9 @@
 experiment:
-  name: det_tcir
-  group: det_tcir
+  name: test
+  group: test
+  # Whether to train on the training set and evaluate on the val set (false)
+  # or train on the full set and evaluate on the test set (true).
+  use_full_dataset: false
   # Number of past time steps given as input
   past_steps: 4
   # List of the target time steps, as indices, e.g.
@@ -9,7 +12,7 @@ experiment:
   # Size of the input and output patches, in pixels (resolution=0.07°)
   patch_size: 128
   # Which channels to use as input
-  input_channels: ['IR', 'PMW']
+  input_channels: ['IR', 'PMW', 'u10', 'v10', 't2m', 'msl']
   # Which contextual variables to include: (must be at least [])
   # LAT, LON, HOUR_COS, HOUR_SIN
   context_variables: ['LAT', 'LON', 'HOUR_COS', 'HOUR_SIN']
@@ -34,7 +37,7 @@ tasks:
   #   The weights are normalized internally, and so don't need to sum to 1.
   vmax:
     output_variables: ['INTENSITY']
-    distribution: deterministic
+    distribution: qc
     predict_residuals: false
     weight: 1
   # mslp:
@@ -53,7 +56,7 @@ training_settings:
   # Trainer precision, usually "bf16-mixed" or "32-true"
   precision: 16-mixed
   # Number of workers for the data loading
-  num_workers: 9
+  num_workers: 0
   # Weight decay
   weight_decay: 0.05
   # Whether to enable data augmentation

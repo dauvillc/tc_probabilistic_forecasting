@@ -102,11 +102,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Flag to indicate that the script is run as part of a sweep.",
     )
-    parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Uses the full training set and evaluates on the test set.",
-    )
     args = parser.parse_args()
 
     # Load the training configuration file
@@ -143,7 +138,7 @@ if __name__ == "__main__":
     tasks = create_tasks(cfg)
 
     # ====== DATA LOADING ====== #
-    val_or_test = "test" if args.full else "val"
+    val_or_test = "test" if experiment_cfg["use_full_dataset"] else "val"
     train_dataset, train_loader = load_dataset(
         cfg, input_variables, tasks, "train",
     )
@@ -187,6 +182,11 @@ if __name__ == "__main__":
         )
 
     # ====== MODELS TRAINING ====== #
+    # Retrieve the path to the checkpoints directory
+    checkpoints_dir = Path(config["paths"]["checkpoints"])
+    # Create a directory for this run specifically
+    checkpoints_dir = checkpoints_dir / current_run.id
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
     # Train the models. Save the train and validation losses
     trainer = pl.Trainer(
         accelerator="gpu",
@@ -195,7 +195,7 @@ if __name__ == "__main__":
         logger=wandb_logger,
         callbacks=[
             ModelCheckpoint(
-                monitor="val_loss", mode="min", dirpath=config["paths"]["checkpoints"]
+                monitor="val_loss", mode="min", dirpath=checkpoints_dir,
             ),
             LearningRateMonitor(),
         ],
