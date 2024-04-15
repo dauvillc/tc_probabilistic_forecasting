@@ -207,7 +207,7 @@ if __name__ == "__main__":
     plt.rcParams["legend.shadow"] = True
 
     def place_legend(ax):
-        ax.legend(loc="upper left", bbox_to_anchor=(1.04, 1), ncol=1)
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.23), ncol=2)
 
     # Create a list of markers and colors for the plots. Each run will be represented
     # by a the same marker and color across all plots.
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
     # Put the legend below the plot
     place_legend(ax)
-    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time.png", bbox_inches="tight")
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time.svg", bbox_inches="tight")
     # Do the same but with a line plot
     fig, ax = plt.subplots()
     sns.lineplot(
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     ax.set_xticks(results_per_time["time_step"].unique())
     ax.set_xticklabels([f"{t}h" for t in results_per_time["time_step"].unique()])
     place_legend(ax)
-    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time_line.png", bbox_inches="tight")
+    plt.savefig(results_dir / f"{eval_task}_{metric}_lead_time_line.svg", bbox_inches="tight")
 
     # Plot the metric for each SSHS category, grouped by group
     fig, ax = plt.subplots()
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     ax.set_xticks(range(-1, 6))
     ax.set_xticklabels(["TD", "TS", "C1", "C2", "C3", "C4", "C5"])
     place_legend(ax)
-    plt.savefig(results_dir / f"{eval_task}_{metric}_category.png", bbox_inches="tight")
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category.svg", bbox_inches="tight")
     # Do the same but with a line plot
     fig, ax = plt.subplots()
     sns.lineplot(
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     ax.set_xticks(range(-1, 6))
     ax.set_xticklabels(["TD", "TS", "C1", "C2", "C3", "C4", "C5"])
     place_legend(ax)
-    plt.savefig(results_dir / f"{eval_task}_{metric}_category_line.png", bbox_inches="tight")
+    plt.savefig(results_dir / f"{eval_task}_{metric}_category_line.svg", bbox_inches="tight")
 
     # Make a barplot of the number of samples per SSHS category
     # First, isolate the results from a single run
@@ -310,4 +310,4 @@ if __name__ == "__main__":
             ha="center",
             va="bottom",
         )
-    plt.savefig(results_dir / "samples_per_category.png", bbox_inches="tight")
+    plt.savefig(results_dir / "samples_per_category.svg", bbox_inches="tight")
