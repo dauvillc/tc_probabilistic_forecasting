@@ -1,9 +1,12 @@
 # Comparing different inputs for tropical cyclones probabilistic intensity forecasting.
+## Additional plots and results
+Please use [This link](https://drive.google.com/drive/folders/1m19aBcugUVfbTKwk__bAGFlmMnJLNmRr?usp=sharing). For further questions or comments (which are of course encouraged !), please wait for my presence at the poster between 16:15 and 18:00.  
+
 ## Reproducibility
 The pipeline is currently built to work with the [TCIR](https://www.csie.ntu.edu.tw/~htlin/program/TCIR/) dataset, as well as [ERA5](https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-pressure-levels?tab=overview).  
 Futhermore, it relies on [Weights and Biases](https://wandb.ai/site) for logging training metrics and model checkpoints.  
 
-[b]Note: All scripts should be run from the project's root directory.[/b]
+**Note: All scripts should be run from the project's root directory.**
 ### Dataset
 This repo is radily evolving, and preparing the data for preprocessing will be made easier in the future.  
 The instructions to currently reproduce the preprocessing are as follows:  
@@ -20,4 +23,3 @@ Unless making a probabilistic model or to evaluate on other tasks (MSLP, R35, LA
 * Run ```experiments/training.py``` to train the model. This will require you to be logged in to W&B.
 * Run ```experiments/make_predictions.py -i ID``` to make predictions on the test set using the model checkpoint uploaded to W&B during training. ID should be the Weights and Biases run id. The predictions and associated targets are saved in ```root_dir/data/predictions/ID``` where root_dir is the project's root directory.
 * Run ```experiments/eval_crossval.py -i ID1 ID2 ... IDn -m MAE -n NAME``` to evalaute the predictions of models ```ID1, ..., IDn```. ```NAME``` is a name given to the evaluation and can be anything containing non-special characters. In particular, it is not the name of any W&B experiment. The results and figures are saved in ```results/NAME```.
-
