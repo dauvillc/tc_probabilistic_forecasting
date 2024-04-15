@@ -2,17 +2,18 @@ paths:
   ibtracs: data/IBTrACS/ibtracs.since1980.list.v04r00.csv
   ibtracs_preprocessed: data/IBTrACS/ibtracs_preprocessed.csv
   era5: /scratch/cdauvill/era5/pangu/
-  era5_patches: /scratch/cdauvill/era5/storm_patches/5/
+  era5_patches: /home/cdauvill/scratch/cdauvill/era5/storm_patches/tcir_matched
   hursat_b1: /scratch/cdauvill/hursat-b1/
   hursat_b1_preprocessed: /scratch/cdauvill/hursat-b1-preprocessed/
   hursat_b1_cache: /scratch/cdauvill/hursat-b1-preprocessed/cache.nc
-  tcir: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
-  tcir_preprocessed_dir: /home/cdauvill/scratch/cdauvill/tcir/preprocessed_small
+  tcir_atln: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ATLN_EPAC_WPAC.h5
+  tcir_sh: /home/cdauvill/scratch/cdauvill/tcir/TCIR-CPAC_IO_SH.h5
+  tcir_2017: /home/cdauvill/scratch/cdauvill/tcir/TCIR-ALL_2017.h5
+  tcir_preprocessed_dir: /home/cdauvill/scratch/cdauvill/tcir/preprocessed
   checkpoints: /home/cdauvill/scratch/checkpoints/
+  wandb_logs: /home/cdauvill/scratch/wandb/
 
 preprocessing:
-  # Number of cross-validation folds to create
-  n_folds: 5
   # Which steps will be included either for the contextual variables
   # or the target.
   # For examples, [-1., 0, 1.] means for every sample, the variables
